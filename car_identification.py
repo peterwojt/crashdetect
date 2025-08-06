@@ -6,12 +6,30 @@ cap = cv2.VideoCapture('input/car_crash_video_8.mp4')
 #fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
 fgbg = cv2.createBackgroundSubtractorKNN()
 
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    fgmask = fgbg.apply(frame)
+
+    # Optional: Scale down video for efficient processing
+    #frame = cv2.resize(frame, (640, 360))
+
+    # Turns image to grayscale and applies Gaussian blur
+    # Improves background subtraction especially under bad lighting
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # Applies background subtraction to frame
+    fgmask = fgbg.apply(blurred)
+
+    # Applies morphological filtering
+    # Reduces noise from video
+    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+
     contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for cnt in contours:
@@ -20,7 +38,7 @@ while True:
         x, y, w, h = cv2.boundingRect(cnt)
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
 
-    cv2.imshow('Moving Cars', fgmask)
+    cv2.imshow('Moving Cars', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
