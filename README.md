@@ -1,0 +1,1 @@
+CrashDetect is a realtime car crash detection system designed to reduce post crash response time and save lives.
