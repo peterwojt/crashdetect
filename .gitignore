@@ -1,4 +1,6 @@
 input/
 output/
+venv/
+crashes/
 .DS_Store
 

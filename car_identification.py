@@ -1,10 +1,16 @@
 import time
 import cv2
 import os
+import numpy as np
 
-cap = cv2.VideoCapture('input/car_crash_video_8.mp4')
+cap = cv2.VideoCapture('input/t.mp4')
+
+fps = cap.get(cv2.CAP_PROP_FPS)
+delay = int(1000 / fps)
+
+
 #fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
-fgbg = cv2.createBackgroundSubtractorKNN()
+fgbg = cv2.createBackgroundSubtractorKNN(history=500, dist2Threshold=400.0, detectShadows=False)
 
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
@@ -31,15 +37,23 @@ while True:
     fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
 
     contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+
+    # Merges nearby areas of movement
+    if contours:
+        merged_mask = np.zeros_like(fgmask)
+        cv2.drawContours(merged_mask, contours, -1, 255, -1)
+        contours, _ = cv2.findContours(merged_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
 
     for cnt in contours:
-        if cv2.contourArea(cnt) < 500:  # filter out small noise
+        if cv2.contourArea(cnt) < 200:  # filter out small noise
             continue
         x, y, w, h = cv2.boundingRect(cnt)
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
 
     cv2.imshow('Moving Cars', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(delay) & 0xFF == ord('q'):
         break
 
 cap.release()
