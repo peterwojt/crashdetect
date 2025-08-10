@@ -3,6 +3,44 @@ import cv2
 import os
 import numpy as np
 
+def merge_close_boxes(boxes, proximity=50):
+    merged = True
+    while merged:
+        merged = False
+        new_boxes = []
+        skip = set()
+
+        for i in range(len(boxes)):
+            if i in skip:
+                continue
+            x1, y1, w1, h1 = boxes[i]
+            box1 = [x1, y1, x1 + w1, y1 + h1]
+            has_merged = False
+
+            for j in range(i + 1, len(boxes)):
+                if j in skip:
+                    continue
+                x2, y2, w2, h2 = boxes[j]
+                box2 = [x2, y2, x2 + w2, y2 + h2]
+
+                # Check if boxes are close enough to merge
+                if not (box2[0] > box1[2] + proximity or box2[2] < box1[0] - proximity or
+                        box2[1] > box1[3] + proximity or box2[3] < box1[1] - proximity):
+                    # Merge into a new bounding box
+                    box1[0] = min(box1[0], box2[0])
+                    box1[1] = min(box1[1], box2[1])
+                    box1[2] = max(box1[2], box2[2])
+                    box1[3] = max(box1[3], box2[3])
+                    skip.add(j)
+                    merged = True
+                    has_merged = True
+
+            new_boxes.append((box1[0], box1[1], box1[2] - box1[0], box1[3] - box1[1]))
+
+        boxes = new_boxes
+    return boxes
+
+
 cap = cv2.VideoCapture('input/t.mp4')
 
 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -11,9 +49,13 @@ delay = int(1000 / fps)
 
 #fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
 fgbg = cv2.createBackgroundSubtractorKNN(history=500, dist2Threshold=400.0, detectShadows=False)
-
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
+heatmap = None
+frame_count = 0
+accumulate_frames = 20
+movement_frames_needed = 5
+boxes2 = []
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -45,13 +87,57 @@ while True:
         cv2.drawContours(merged_mask, contours, -1, 255, -1)
         contours, _ = cv2.findContours(merged_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
+    boxes = []
+
+
+
+    if heatmap is None:
+        heatmap = np.zeros_like(fgmask, dtype=np.float32)
+    
+    heatmap += fgmask.astype(np.float32)
+
+    frame_count += 1
+
+    if frame_count >= accumulate_frames:
+        boxes2 = []
+        thresh = ((heatmap >= movement_frames_needed).astype(np.uint8)) * 255
+        
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for cnt in contours:
+            if cv2.contourArea(cnt) < 200:
+                continue
+            x, y, w, h = cv2.boundingRect(cnt)
+            #cv2.rectangle(frame, (x, y), (x+w, y+h), (255,255,255), 2)
+            boxes2.append((x, y, w, h))
+    
+        boxes2 = merge_close_boxes(boxes2, proximity=10)
+    
+        # Reset heatmap
+        heatmap.fill(0)
+        frame_count = 0
+
+
+    for (x, y, w, h) in boxes2:
+        cv2.rectangle(frame, (x-50, y-50), (x+w+50, y+h+50), (255,255,255), 2)
+
+
 
     for cnt in contours:
         if cv2.contourArea(cnt) < 200:  # filter out small noise
             continue
         x, y, w, h = cv2.boundingRect(cnt)
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
+        #cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
 
+        boxes.append((x, y, w, h))
+    
+    boxes = merge_close_boxes(boxes, proximity=50)
+    
+    for (x, y, w, h) in boxes:
+        #cv2.rectangle(frame, (x-50, y-50), (x + w+50, y + h+50), (0, 255, 0), 2)
+        cv2.rectangle(fgmask, (x-50, y-50), (x + w+50, y + h+50), (255, 255, 0), 2)
+
+    cv2.imshow('FG Mask', fgmask)
     cv2.imshow('Moving Cars', frame)
     if cv2.waitKey(delay) & 0xFF == ord('q'):
         break
