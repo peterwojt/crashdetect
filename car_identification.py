@@ -41,7 +41,18 @@ def merge_close_boxes(boxes, proximity=50):
     return boxes
 
 
-cap = cv2.VideoCapture('input/t.mp4')
+# Parameters
+input_path = 'input/t.mp4'
+accumulate_frames = 20
+movement_frames_needed = 5
+proximity_to_merge_boxes = 10
+video_padding = 50
+warmup_frames = 1
+
+
+
+
+cap = cv2.VideoCapture(input_path)
 
 fps = cap.get(cv2.CAP_PROP_FPS)
 delay = int(1000 / fps)
@@ -53,9 +64,14 @@ kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
 heatmap = None
 frame_count = 0
-accumulate_frames = 20
-movement_frames_needed = 5
+
+
 boxes2 = []
+frame_index = 0
+metadata = []
+
+
+
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -98,7 +114,7 @@ while True:
 
     frame_count += 1
 
-    if frame_count >= accumulate_frames:
+    if frame_index > warmup_frames and frame_count >= accumulate_frames:
         boxes2 = []
         thresh = ((heatmap >= movement_frames_needed).astype(np.uint8)) * 255
         
@@ -109,14 +125,21 @@ while True:
                 continue
             x, y, w, h = cv2.boundingRect(cnt)
             #cv2.rectangle(frame, (x, y), (x+w, y+h), (255,255,255), 2)
+
             boxes2.append((x, y, w, h))
     
-        boxes2 = merge_close_boxes(boxes2, proximity=10)
-    
+        boxes2 = merge_close_boxes(boxes2, proximity=proximity_to_merge_boxes)
+        
+        if boxes2:
+            metadata.append((frame_index - accumulate_frames, frame_index - 1, boxes2))
+        
+
+
         # Reset heatmap
         heatmap.fill(0)
         frame_count = 0
 
+    frame_index+=1
 
     for (x, y, w, h) in boxes2:
         cv2.rectangle(frame, (x-50, y-50), (x+w+50, y+h+50), (255,255,255), 2)
@@ -141,9 +164,48 @@ while True:
     cv2.imshow('Moving Cars', frame)
     if cv2.waitKey(delay) & 0xFF == ord('q'):
         break
+    
 
 cap.release()
 cv2.destroyAllWindows()
+
+
+
+os.makedirs("output", exist_ok=True)
+cap = cv2.VideoCapture(input_path)
+clip_index = 0
+
+for (start_f, end_f, boxes) in metadata:
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
+    frames_to_save = end_f - start_f + 1
+    buffer = []
+
+    for _ in range(frames_to_save):
+        ret, frame = cap.read()
+        if not ret:
+            break
+        buffer.append(frame.copy())
+
+    for box in boxes:
+        x, y, w, h = box
+        crop_x1 = max(x - video_padding, 0)
+        crop_y1 = max(y - video_padding, 0)
+        crop_x2 = min(x + w + video_padding, buffer[0].shape[1])
+        crop_y2 = min(y + h + video_padding, buffer[0].shape[0])
+
+        out_path = f"output/object_{clip_index}.mp4"
+        out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, 
+                              (crop_x2 - crop_x1, crop_y2 - crop_y1))
+
+        for f in buffer:
+            crop = f[crop_y1:crop_y2, crop_x1:crop_x2]
+            out.write(crop)
+
+        out.release()
+        clip_index += 1
+
+cap.release()
+
 
 if False:
     input_folder = 'input'
