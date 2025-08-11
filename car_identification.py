@@ -42,12 +42,15 @@ def merge_close_boxes(boxes, proximity=50):
 
 
 # Parameters
-input_path = 'input/t.mp4'
+input_path = 'input/g.mp4'
+background_subtractor_history = 500
+background_subtractor_threshold = 400.0
+cluster_identification_threshold = 200
 accumulate_frames = 20
 movement_frames_needed = 5
 proximity_to_merge_boxes = 10
 video_padding = 50
-warmup_frames = 1
+warmup_frames = 0
 
 
 
@@ -58,7 +61,7 @@ cap = cv2.VideoCapture(input_path)
 fps = cap.get(cv2.CAP_PROP_FPS)
 
 #fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
-fgbg = cv2.createBackgroundSubtractorKNN(history=500, dist2Threshold=400.0, detectShadows=False)
+fgbg = cv2.createBackgroundSubtractorKNN(history=background_subtractor_history, dist2Threshold=background_subtractor_threshold, detectShadows=False)
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
 heatmap = None
@@ -70,6 +73,8 @@ frame_index = 0
 metadata = []
 
 
+
+start = time.time()
 
 while True:
     ret, frame = cap.read()
@@ -109,14 +114,14 @@ while True:
 
     frame_count += 1
 
-    if frame_index > warmup_frames and frame_count >= accumulate_frames:
+    if frame_count >= accumulate_frames:
         boxes2 = []
         thresh = ((heatmap >= movement_frames_needed).astype(np.uint8)) * 255
         
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for cnt in contours:
-            if cv2.contourArea(cnt) < 200:
+            if cv2.contourArea(cnt) < cluster_identification_threshold:
                 continue
             x, y, w, h = cv2.boundingRect(cnt)
             #cv2.rectangle(frame, (x, y), (x+w, y+h), (255,255,255), 2)
@@ -135,7 +140,10 @@ while True:
         frame_count = 0
 
     frame_index+=1
-    
+ 
+end = time.time()   
+
+print(f'Identified regions of interest in {end - start:.2f} seconds')
 
 
 cap.release()
@@ -177,3 +185,6 @@ for (start_f, end_f, boxes) in metadata:
 cap.release()
 
 
+end = time.time()
+
+print(f'Finished in {end - start:.2f} seconds')
