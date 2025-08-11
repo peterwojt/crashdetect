@@ -1,5 +1,7 @@
 input/
 output/
+demo/input/
+demo/output/
 venv/
 crashes/
 .DS_Store

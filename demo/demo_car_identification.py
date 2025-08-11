@@ -43,6 +43,9 @@ def merge_close_boxes(boxes, proximity=50):
 
 # Parameters
 input_path = 'input/t.mp4'
+background_subtractor_history = 500
+background_subtractor_threshold = 400.0
+cluster_identification_threshold = 200
 accumulate_frames = 20
 movement_frames_needed = 5
 proximity_to_merge_boxes = 10
@@ -52,13 +55,14 @@ warmup_frames = 1
 
 
 
-
 cap = cv2.VideoCapture(input_path)
 
 fps = cap.get(cv2.CAP_PROP_FPS)
+delay = int(1000 / fps)
+
 
 #fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
-fgbg = cv2.createBackgroundSubtractorKNN(history=500, dist2Threshold=400.0, detectShadows=False)
+fgbg = cv2.createBackgroundSubtractorKNN(history=background_subtractor_history, dist2Threshold=background_subtractor_threshold, detectShadows=False)
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
 heatmap = None
@@ -101,6 +105,10 @@ while True:
         merged_mask = np.zeros_like(fgmask)
         cv2.drawContours(merged_mask, contours, -1, 255, -1)
         contours, _ = cv2.findContours(merged_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    boxes = []
+
+
 
     if heatmap is None:
         heatmap = np.zeros_like(fgmask, dtype=np.float32)
@@ -116,7 +124,7 @@ while True:
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for cnt in contours:
-            if cv2.contourArea(cnt) < 200:
+            if cv2.contourArea(cnt) < cluster_identification_threshold:
                 continue
             x, y, w, h = cv2.boundingRect(cnt)
             #cv2.rectangle(frame, (x, y), (x+w, y+h), (255,255,255), 2)
@@ -135,12 +143,38 @@ while True:
         frame_count = 0
 
     frame_index+=1
+
+    for (x, y, w, h) in boxes2:
+        cv2.rectangle(frame, (x-50, y-50), (x+w+50, y+h+50), (255,255,255), 2)
+
+
+
+    for cnt in contours:
+        if cv2.contourArea(cnt) < 200:  # filter out small noise
+            continue
+        x, y, w, h = cv2.boundingRect(cnt)
+        #cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
+
+        boxes.append((x, y, w, h))
+    
+    boxes = merge_close_boxes(boxes, proximity=50)
+    
+    for (x, y, w, h) in boxes:
+        #cv2.rectangle(frame, (x-50, y-50), (x + w+50, y + h+50), (0, 255, 0), 2)
+        cv2.rectangle(fgmask, (x-50, y-50), (x + w+50, y + h+50), (255, 255, 0), 2)
+
+    cv2.imshow('FG Mask', fgmask)
+    cv2.imshow('Moving Cars', frame)
+    if cv2.waitKey(delay) & 0xFF == ord('q'):
+        break
     
 
-
 cap.release()
+cv2.destroyAllWindows()
 
 
+
+os.makedirs("input", exist_ok=True)
 os.makedirs("output", exist_ok=True)
 cap = cv2.VideoCapture(input_path)
 clip_index = 0
@@ -177,3 +211,32 @@ for (start_f, end_f, boxes) in metadata:
 cap.release()
 
 
+if False:
+    input_folder = 'input'
+    output_folder = 'output'
+
+    filename = 'car_crash_video_8.mp4'
+
+    input_path = os.path.join(input_folder, filename)
+    output_path = os.path.join(output_folder, filename)
+
+    cap = cv2.VideoCapture(input_path)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    start = time.time()
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+    end = time.time()
+
+    print(f'Processed file in {end - start:.2f} seconds')
+
+    cap.release()
+    out.release()
