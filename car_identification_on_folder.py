@@ -5,7 +5,7 @@ import numpy as np
 from glob import glob
 
 # Parameters
-input_folder = 'input'
+input_folder = 'crashes'
 background_subtractor_history = 50
 background_subtractor_threshold = 400.0
 cluster_identification_threshold = 100
@@ -103,7 +103,7 @@ def detect_motion_regions(
             heatmap.fill(0)
             frame_count = 0
     end = time.time()
-    print(f'Identified regions of interest in {end - start:.2f} seconds')
+    #print(f'Identified regions of interest in {end - start:.2f} seconds')
     cap.release()
     os.makedirs("videos", exist_ok=True)
     cap = cv2.VideoCapture(input_path)
@@ -132,13 +132,13 @@ def detect_motion_regions(
             clip_index[0] += 1
     cap.release()
     end = time.time()
-    print(f'Finished in {end - start:.2f} seconds')
+    #print(f'Finished in {end - start:.2f} seconds')
 
 def process_folder(input_folder):
     video_files = sorted(glob(os.path.join(input_folder, "*.mp4")))
     clip_index = [1]  # Use list for mutable integer
     for video_file in video_files:
-        print(f"Processing {video_file} ...")
+        #print(f"Processing {video_file} ...")
         detect_motion_regions(
             video_file,
             clip_index,

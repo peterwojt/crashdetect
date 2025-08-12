@@ -81,8 +81,11 @@ def play_video(video_path, index):
             label_text = 'Crash'
             label_color = (0, 0, 255)    # Red
         elif label == 'z':
-            label_text = 'N/A'
+            label_text = 'Not a car'
             label_color = (0, 255, 255)    # Yellow
+        elif label == 'd':
+            label_text = 'not included'
+            label_color = (255, 255, 255)    # Yellow
         else:
             label_text = ''
             label_color = (200, 200, 200)  # Gray
@@ -109,9 +112,14 @@ def play_video(video_path, index):
             cap.release()
             cv2.destroyAllWindows()
             return 'next'
+        elif key == ord('d'):
+            save_label(video_files[index], 'd')
+            cap.release()
+            cv2.destroyAllWindows()
+            return 'next'
         elif key == 83:  # Right arrow key
             # Only allow next if label exists
-            if label in ('n', 'c', 'z'):
+            if label in ('n', 'c', 'z', 'd'):
                 cap.release()
                 cv2.destroyAllWindows()
                 return 'next'
