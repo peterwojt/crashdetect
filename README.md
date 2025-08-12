@@ -5,6 +5,11 @@ CrashDetect is a realtime car crash detection system designed to reduce post cra
 After cloning the repository create a python3 virtual enviornment using the command `python -m venv venv`. Next, activate this virtual enviornment by running the command `source venv/bin/activate`.
 
 ### CrashDetect Architecture
-Crashdetect is an end-to-end car crash detection system for surveillance cameras. The first step is to use computer vision techniques to zoom into regions with car movement in the video frame. This dramatically reduces computation and improves model intelligence. The code is available in the [car identification section](#car-identification).
+Crashdetect is an end-to-end car crash detection system for surveillance cameras. The first step is to use computer vision techniques to zoom into regions with car movement in the video frame. This dramatically reduces computation and improves model intelligence. This code is available in the [car identification section](#car-identification). Next the smaller video segments are analysed by a neural network. This neural network predicts whether the small video has a car crash or if it does not. This output could be used in the future to notify emergency services. Read more about the neural network under the [video analysis](#video-analysis) section.
 
 ### Car Identification
+
+
+### Video Analysis
+
+
