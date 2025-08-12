@@ -4,5 +4,6 @@ demo/input/
 demo/output/
 venv/
 crashes/
+labels.csv
 .DS_Store
 

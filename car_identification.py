@@ -3,188 +3,221 @@ import cv2
 import os
 import numpy as np
 
-def merge_close_boxes(boxes, proximity=50):
-    merged = True
-    while merged:
-        merged = False
-        new_boxes = []
-        skip = set()
-
-        for i in range(len(boxes)):
-            if i in skip:
-                continue
-            x1, y1, w1, h1 = boxes[i]
-            box1 = [x1, y1, x1 + w1, y1 + h1]
-            has_merged = False
-
-            for j in range(i + 1, len(boxes)):
-                if j in skip:
-                    continue
-                x2, y2, w2, h2 = boxes[j]
-                box2 = [x2, y2, x2 + w2, y2 + h2]
-
-                # Check if boxes are close enough to merge
-                if not (box2[0] > box1[2] + proximity or box2[2] < box1[0] - proximity or
-                        box2[1] > box1[3] + proximity or box2[3] < box1[1] - proximity):
-                    # Merge into a new bounding box
-                    box1[0] = min(box1[0], box2[0])
-                    box1[1] = min(box1[1], box2[1])
-                    box1[2] = max(box1[2], box2[2])
-                    box1[3] = max(box1[3], box2[3])
-                    skip.add(j)
-                    merged = True
-                    has_merged = True
-
-            new_boxes.append((box1[0], box1[1], box1[2] - box1[0], box1[3] - box1[1]))
-
-        boxes = new_boxes
-    return boxes
 
 
 # Parameters
-input_path = 'input/g.mp4'
-background_subtractor_history = 500
+input_path = 'input/h.mp4'
+background_subtractor_history = 50
 background_subtractor_threshold = 400.0
-cluster_identification_threshold = 200
+cluster_identification_threshold = 100
 accumulate_frames = 20
 movement_frames_needed = 5
 proximity_to_merge_boxes = 10
 video_padding = 50
-warmup_frames = 0
+warmup_frames = 10
 
 
 
+def detect_motion_regions(
+    input_path,
+    background_subtractor_history = 50,
+    background_subtractor_threshold = 400.0,
+    cluster_identification_threshold = 100,
+    accumulate_frames = 20,
+    movement_frames_needed = 5,
+    proximity_to_merge_boxes = 10,
+    video_padding = 50,
+    warmup_frames = 10,
+):
+
+    def merge_close_boxes(boxes, proximity=50):
+        merged = True
+        while merged:
+            merged = False
+            new_boxes = []
+            skip = set()
+
+            for i in range(len(boxes)):
+                if i in skip:
+                    continue
+                x1, y1, w1, h1 = boxes[i]
+                box1 = [x1, y1, x1 + w1, y1 + h1]
+                has_merged = False
+
+                for j in range(i + 1, len(boxes)):
+                    if j in skip:
+                        continue
+                    x2, y2, w2, h2 = boxes[j]
+                    box2 = [x2, y2, x2 + w2, y2 + h2]
+
+                    # Check if boxes are close enough to merge
+                    if not (box2[0] > box1[2] + proximity or box2[2] < box1[0] - proximity or
+                            box2[1] > box1[3] + proximity or box2[3] < box1[1] - proximity):
+                        # Merge into a new bounding box
+                        box1[0] = min(box1[0], box2[0])
+                        box1[1] = min(box1[1], box2[1])
+                        box1[2] = max(box1[2], box2[2])
+                        box1[3] = max(box1[3], box2[3])
+                        skip.add(j)
+                        merged = True
+                        has_merged = True
+
+                new_boxes.append((box1[0], box1[1], box1[2] - box1[0], box1[3] - box1[1]))
+
+            boxes = new_boxes
+        return boxes
 
 
-cap = cv2.VideoCapture(input_path)
+    cap = cv2.VideoCapture(input_path)
 
-fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = cap.get(cv2.CAP_PROP_FPS)
 
-#fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
-fgbg = cv2.createBackgroundSubtractorKNN(history=background_subtractor_history, dist2Threshold=background_subtractor_threshold, detectShadows=False)
-kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    #fgbg = cv2.createBackgroundSubtractorMOG2(history=120, varThreshold=10, detectShadows=False)
+    fgbg = cv2.createBackgroundSubtractorKNN(history=background_subtractor_history, dist2Threshold=background_subtractor_threshold, detectShadows=False)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
-heatmap = None
-frame_count = 0
-
-
-boxes2 = []
-frame_index = 0
-metadata = []
+    heatmap = None
+    frame_count = 0
 
 
-
-start = time.time()
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+    boxes2 = []
+    frame_index = 0
+    metadata = []
 
 
-    # Optional: Scale down video for efficient processing
-    #frame = cv2.resize(frame, (640, 360))
 
-    # Turns image to grayscale and applies Gaussian blur
-    # Improves background subtraction especially under bad lighting
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    start = time.time()
 
-    # Applies background subtraction to frame
-    fgmask = fgbg.apply(blurred)
-
-    # Applies morphological filtering
-    # Reduces noise from video
-    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
-    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
-
-    contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-
-    # Merges nearby areas of movement
-    if contours:
-        merged_mask = np.zeros_like(fgmask)
-        cv2.drawContours(merged_mask, contours, -1, 255, -1)
-        contours, _ = cv2.findContours(merged_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if heatmap is None:
-        heatmap = np.zeros_like(fgmask, dtype=np.float32)
-    
-    heatmap += fgmask.astype(np.float32)
-
-    frame_count += 1
-
-    if frame_count >= accumulate_frames:
-        boxes2 = []
-        thresh = ((heatmap >= movement_frames_needed).astype(np.uint8)) * 255
-        
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        for cnt in contours:
-            if cv2.contourArea(cnt) < cluster_identification_threshold:
-                continue
-            x, y, w, h = cv2.boundingRect(cnt)
-            #cv2.rectangle(frame, (x, y), (x+w, y+h), (255,255,255), 2)
-
-            boxes2.append((x, y, w, h))
-    
-        boxes2 = merge_close_boxes(boxes2, proximity=proximity_to_merge_boxes)
-        
-        if boxes2:
-            metadata.append((frame_index - accumulate_frames, frame_index - 1, boxes2))
-        
-
-
-        # Reset heatmap
-        heatmap.fill(0)
-        frame_count = 0
-
-    frame_index+=1
- 
-end = time.time()   
-
-print(f'Identified regions of interest in {end - start:.2f} seconds')
-
-
-cap.release()
-
-
-os.makedirs("output", exist_ok=True)
-cap = cv2.VideoCapture(input_path)
-clip_index = 0
-
-for (start_f, end_f, boxes) in metadata:
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
-    frames_to_save = end_f - start_f + 1
-    buffer = []
-
-    for _ in range(frames_to_save):
+    while True:
         ret, frame = cap.read()
         if not ret:
             break
-        buffer.append(frame.copy())
-
-    for box in boxes:
-        x, y, w, h = box
-        crop_x1 = max(x - video_padding, 0)
-        crop_y1 = max(y - video_padding, 0)
-        crop_x2 = min(x + w + video_padding, buffer[0].shape[1])
-        crop_y2 = min(y + h + video_padding, buffer[0].shape[0])
-
-        out_path = f"output/object_{clip_index}.mp4"
-        out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, 
-                              (crop_x2 - crop_x1, crop_y2 - crop_y1))
-
-        for f in buffer:
-            crop = f[crop_y1:crop_y2, crop_x1:crop_x2]
-            out.write(crop)
-
-        out.release()
-        clip_index += 1
-
-cap.release()
 
 
-end = time.time()
+        # Optional: Scale down video for efficient processing
+        #frame = cv2.resize(frame, (640, 360))
 
-print(f'Finished in {end - start:.2f} seconds')
+        # Turns image to grayscale and applies Gaussian blur
+        # Improves background subtraction especially under bad lighting
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # Applies background subtraction to frame
+        fgmask = fgbg.apply(blurred)
+
+        # Applies morphological filtering
+        # Reduces noise from video
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+
+        frame_index+=1
+
+        if frame_index <= warmup_frames:
+            continue
+        
+        contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+
+        # Merges nearby areas of movement
+        if contours:
+            merged_mask = np.zeros_like(fgmask)
+            cv2.drawContours(merged_mask, contours, -1, 255, -1)
+            contours, _ = cv2.findContours(merged_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if heatmap is None:
+            heatmap = np.zeros_like(fgmask, dtype=np.float32)
+        
+        heatmap += fgmask.astype(np.float32)
+
+        frame_count += 1
+
+        if frame_count >= accumulate_frames:
+            boxes2 = []
+            thresh = ((heatmap >= movement_frames_needed).astype(np.uint8)) * 255
+            
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for cnt in contours:
+                if cv2.contourArea(cnt) < cluster_identification_threshold:
+                    continue
+                x, y, w, h = cv2.boundingRect(cnt)
+                #cv2.rectangle(frame, (x, y), (x+w, y+h), (255,255,255), 2)
+
+                boxes2.append((x, y, w, h))
+        
+            boxes2 = merge_close_boxes(boxes2, proximity=proximity_to_merge_boxes)
+            
+            if boxes2:
+                metadata.append((frame_index - accumulate_frames, frame_index - 1, boxes2))
+            
+
+
+            # Reset heatmap
+            heatmap.fill(0)
+            frame_count = 0
+
+    
+    end = time.time()   
+
+    print(f'Identified regions of interest in {end - start:.2f} seconds')
+
+
+    cap.release()
+
+
+    os.makedirs("output", exist_ok=True)
+    cap = cv2.VideoCapture(input_path)
+    clip_index = 0
+
+    for (start_f, end_f, boxes) in metadata:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
+        frames_to_save = end_f - start_f + 1
+        buffer = []
+
+        for _ in range(frames_to_save):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            buffer.append(frame.copy())
+
+        for box in boxes:
+            x, y, w, h = box
+            crop_x1 = max(x - video_padding, 0)
+            crop_y1 = max(y - video_padding, 0)
+            crop_x2 = min(x + w + video_padding, buffer[0].shape[1])
+            crop_y2 = min(y + h + video_padding, buffer[0].shape[0])
+
+            out_path = f"output/object_{clip_index}.mp4"
+            out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, 
+                                (crop_x2 - crop_x1, crop_y2 - crop_y1))
+
+            for f in buffer:
+                crop = f[crop_y1:crop_y2, crop_x1:crop_x2]
+                out.write(crop)
+
+            out.release()
+            clip_index += 1
+
+    cap.release()
+
+
+    end = time.time()
+
+    print(f'Finished in {end - start:.2f} seconds')
+
+
+
+
+
+
+detect_motion_regions(
+    input_path,
+    background_subtractor_history = 50,
+    background_subtractor_threshold = 400.0,
+    cluster_identification_threshold = 100,
+    accumulate_frames = 20,
+    movement_frames_needed = 5,
+    proximity_to_merge_boxes = 10,
+    video_padding = 50,
+    warmup_frames = 10,
+)
