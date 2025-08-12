@@ -5,7 +5,7 @@ import csv
 def natural_sort_key(s):
     import re
     return [int(text) if text.isdigit() else text.lower()
-            for text in re.split('(\d+)', s)]
+            for text in re.split(r'(\d+)', s)]
 
 video_folder = 'output'  # Replace with your folder path
 video_files = [f for f in os.listdir(video_folder) if f.endswith(('.mp4', '.avi', '.mov'))]
@@ -70,8 +70,8 @@ def play_video(video_path, index):
         # Estimate font scale for desired height
         (w, h), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
         font_scale = desired_text_height / h
-        cv2.putText(frame, text, (10, desired_text_height + 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,255,0), 2, cv2.LINE_AA)
+        #cv2.putText(frame, text, (10, desired_text_height + 10),
+        #            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,255,0), 2, cv2.LINE_AA)
         # Display label status in color
         label = get_label_for_file(video_files[index])
         if label == 'n':
