@@ -368,6 +368,7 @@ print(f"TP={tp} FP={fp} FN={fn} TN={tn}")
 
 results = {
     "model_name": checkpoint_path,
+    "model_description" : "Model is based on resnet18 with all but the last 4 layers frozen. 150 epochs with 10 epoch patience.",
     "accuracy":  accuracy,
     "precision": precision,
     "recall":    recall,
