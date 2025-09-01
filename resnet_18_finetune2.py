@@ -7,7 +7,11 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Sampler
 from torchvision import models, transforms
 import cv2
-
+from sklearn.metrics import (
+    precision_score, recall_score, f1_score,
+    confusion_matrix, roc_auc_score, roc_curve,
+    average_precision_score, precision_recall_curve
+)
 # ------------------------
 # Random padding transform
 # ------------------------
@@ -79,13 +83,17 @@ class DistributionBatchSampler(Sampler):
         self.batch_n = batch_size - self.batch_c - self.batch_z
 
     def __iter__(self):
-        while len(self.c_files) > 0:
-            c_batch = [self.c_files.pop(0) for _ in range(min(self.batch_c, len(self.c_files)))]
-            n_batch = random.sample(self.n_files, min(self.batch_n, len(self.n_files)))
-            z_batch = random.sample(self.z_files, min(self.batch_z, len(self.z_files)))
+        c_pool = self.c_files.copy()
+        n_pool = self.n_files.copy()
+        z_pool = self.z_files.copy()
+        while len(c_pool) > 0:
+            c_batch = [c_pool.pop(0) for _ in range(min(self.batch_c, len(c_pool)))]
+            n_batch = random.sample(n_pool, min(self.batch_n, len(n_pool)))
+            z_batch = random.sample(z_pool, min(self.batch_z, len(z_pool)))
             batch = c_batch + n_batch + z_batch
             random.shuffle(batch)
             yield batch
+
 
     def __len__(self):
         return (len(self.c_files) + self.batch_c - 1) // self.batch_c
@@ -145,28 +153,65 @@ test_loader = create_loader("test")
 # Load pretrained ResNet18
 # ------------------------
 model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+
+
+
+# Freeze everything first
+for param in model.parameters():
+    param.requires_grad = False
+
+# Unfreeze only layer4 + fc
+for name, param in model.named_parameters():
+    if name.startswith("layer4") or name.startswith("fc"):
+        param.requires_grad = True
+
+
+
 num_ftrs = model.fc.in_features
 model.fc = nn.Linear(num_ftrs, 2)
 model = model.to(device)
 
-criterion = nn.CrossEntropyLoss()
+# Example: more weight to crash class
+weights = torch.tensor([3.0, 1.0])  # crash=3x, no crash=1x
+criterion = nn.CrossEntropyLoss(weight=weights)
+
 optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+train_c, train_n, train_z = get_file_lists("train")
+val_c, val_n, val_z = get_file_lists("val")
+train_size = len(train_c + train_n + train_z)
+val_size = len(val_c + val_n + val_z)
 
 # ------------------------
 # Training loop
 # ------------------------
-num_epochs = 5
+
+num_epochs = 30
+patience = 5   # stop if val loss doesn’t improve for 5 epochs
+
+best_val_loss = float("inf")
+epochs_no_improve = 0
+best_epoch = -1
+checkpoint_path = "best_model.pth"
+
 for epoch in range(num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}")
     print("-"*20)
 
     for phase in ["train", "val"]:
         loader = train_loader if phase=="train" else val_loader
-        model.train() if phase=="train" else model.eval()
+        if phase == "train":
+            model.train()
+        else:
+            model.eval()
+
         running_loss = 0.0
         running_corrects = 0
+        tp_total, fp_total, tn_total, fn_total = 0, 0, 0, 0
 
-        for inputs, labels in loader:
+        all_preds, all_labels, all_probs = [], [], []
+
+        for batch_idx, (inputs, labels) in enumerate(loader):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
 
@@ -174,33 +219,115 @@ for epoch in range(num_epochs):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 _, preds = torch.max(outputs,1)
+
                 if phase=="train":
                     loss.backward()
                     optimizer.step()
 
+            # Collect metrics
             running_loss += loss.item() * inputs.size(0)
-            running_corrects += torch.sum(preds == labels.data)
+            running_corrects += torch.sum(preds == labels.data).item()
 
-        dataset_size = len(get_file_lists("train")[0] + get_file_lists("train")[1] + get_file_lists("train")[2]) \
-            if phase=="train" else len(get_file_lists("val")[0] + get_file_lists("val")[1] + get_file_lists("val")[2])
+            # TP/FP/TN/FN (assuming class 0 = positive, class 1 = negative; adjust if swapped)
+            tp = ((preds == 0) & (labels == 0)).sum().item()
+            fp = ((preds == 0) & (labels == 1)).sum().item()
+            tn = ((preds == 1) & (labels == 1)).sum().item()
+            fn = ((preds == 1) & (labels == 0)).sum().item()
+            tp_total += tp
+            fp_total += fp
+            tn_total += tn
+            fn_total += fn
+
+            # Save for ROC/PR
+            probs = F.softmax(outputs, dim=1)[:,0]  # prob of class 0 (positive)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            all_probs.extend(probs.detach().cpu().numpy())
+
+            batch_acc = torch.sum(preds == labels.data).double() / labels.size(0)
+            print(f"{phase} Batch {batch_idx+1}/{len(loader)}: "
+                  f"Loss {loss.item():.4f} Acc {batch_acc:.4f} "
+                  f"| TP={tp} FP={fp} FN={fn} TN={tn}    ", end="\r")
+
+        dataset_size = train_size if phase=="train" else val_size
         epoch_loss = running_loss / dataset_size
-        epoch_acc = running_corrects.double() / dataset_size
-        print(f"{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}")
+        epoch_acc = running_corrects / float(dataset_size)
 
+        # ---- Compute extra metrics ----
+        precision = precision_score(all_labels, all_preds, zero_division=0)
+        recall    = recall_score(all_labels, all_preds, zero_division=0)
+        f1        = f1_score(all_labels, all_preds, zero_division=0)
+
+        try:
+            roc_auc = roc_auc_score(all_labels, all_probs)
+        except ValueError:
+            roc_auc = float("nan")  # if only one class predicted
+
+        pr_auc = average_precision_score(all_labels, all_probs)
+
+        print(f"{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} "
+              f"| TP={tp_total} FP={fp_total} FN={fn_total} TN={tn_total}")
+        print(f"{phase} Precision: {precision:.4f} Recall: {recall:.4f} "
+              f"F1: {f1:.4f} ROC-AUC: {roc_auc:.4f} PR-AUC: {pr_auc:.4f}")
+
+        # -------- Early stopping check --------
+        if phase == "val":
+            if epoch_loss < best_val_loss:
+                best_val_loss = epoch_loss
+                best_epoch = epoch
+                epochs_no_improve = 0
+                torch.save(model.state_dict(), checkpoint_path)
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve >= patience:
+                    print(f"\nEarly stopping at epoch {epoch+1}, best was {best_epoch+1}")
+                    model.load_state_dict(torch.load(checkpoint_path))
+                    break
+    else:
+        continue
+    break
 # ------------------------
 # Test evaluation
 # ------------------------
 model.eval()
-running_corrects = 0
+
+all_preds = []
+all_labels = []
+all_probs = []
+
 c_files, n_files, z_files = get_file_lists("test")
 test_dataset_size = len(c_files + n_files + z_files)
 
 for inputs, labels in test_loader:
     inputs, labels = inputs.to(device), labels.to(device)
     with torch.no_grad():
-        outputs = model(inputs)
+        outputs = model(inputs)                # raw logits
+        probs = torch.softmax(outputs, dim=1)  # convert to probabilities
         _, preds = torch.max(outputs,1)
-        running_corrects += torch.sum(preds == labels.data)
 
-test_acc = running_corrects.double() / test_dataset_size
-print(f"TEST Accuracy: {test_acc:.4f}")
+    all_preds.extend(preds.cpu().numpy())
+    all_labels.extend(labels.cpu().numpy())
+    all_probs.extend(probs[:,1].cpu().numpy())  # prob for class "1" (positive)
+
+# Compute confusion matrix
+cm = confusion_matrix(all_labels, all_preds)
+tn, fp, fn, tp = cm.ravel()
+
+# Metrics
+accuracy  = (tp + tn) / (tp + tn + fp + fn)
+precision = precision_score(all_labels, all_preds, zero_division=0)
+recall    = recall_score(all_labels, all_preds, zero_division=0)
+f1        = f1_score(all_labels, all_preds, zero_division=0)
+
+roc_auc   = roc_auc_score(all_labels, all_probs)
+pr_auc    = average_precision_score(all_labels, all_probs)
+
+print("TEST RESULTS")
+print(f"Accuracy : {accuracy:.4f}")
+print(f"Precision: {precision:.4f}")
+print(f"Recall   : {recall:.4f}")
+print(f"F1 Score : {f1:.4f}")
+print(f"ROC-AUC  : {roc_auc:.4f}")
+print(f"PR-AUC   : {pr_auc:.4f}")
+print(f"Confusion Matrix:\n{cm}")
+print(f"TP={tp} FP={fp} FN={fn} TN={tn}")

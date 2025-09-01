@@ -9,3 +9,4 @@ videos/
 labels.csv
 .DS_Store
 videos.tar.xz
+best_model.pth
