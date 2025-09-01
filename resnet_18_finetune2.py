@@ -180,7 +180,10 @@ model = model.to(device)
 weights = torch.tensor([3.0, 1.0])  # crash=3x, no crash=1x
 criterion = nn.CrossEntropyLoss(weight=weights)
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam([
+    {'params': model.layer4.parameters(), 'lr': 1e-4},
+    {'params': model.fc.parameters(), 'lr': 1e-3}
+])
 
 train_c, train_n, train_z = get_file_lists("train")
 val_c, val_n, val_z = get_file_lists("val")
