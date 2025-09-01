@@ -13,6 +13,10 @@ from sklearn.metrics import (
     confusion_matrix, roc_auc_score, roc_curve,
     average_precision_score, precision_recall_curve
 )
+import matplotlib.pyplot as plt
+
+
+
 # ------------------------
 # Random padding transform
 # ------------------------
@@ -206,6 +210,16 @@ if os.path.isfile(csv_file):
 # New model checkpoint name based on entries
 checkpoint_path = f"models/model_{num_entries+1}.pth"
 
+history = {
+    "train_loss": [], "val_loss": [],
+    "train_acc": [],  "val_acc": [],
+    "train_precision": [], "val_precision": [],
+    "train_recall": [],    "val_recall": [],
+    "train_f1": [],        "val_f1": [],
+    "train_roc_auc": [],   "val_roc_auc": [],
+    "train_pr_auc": [],    "val_pr_auc": []
+}
+
 for epoch in range(num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}")
     print("-"*20)
@@ -282,6 +296,14 @@ for epoch in range(num_epochs):
         print(f"{phase} Precision: {precision:.4f} Recall: {recall:.4f} "
               f"F1: {f1:.4f} ROC-AUC: {roc_auc:.4f} PR-AUC: {pr_auc:.4f}")
 
+        # --- Save history ---
+        history[f"{phase}_loss"].append(epoch_loss)
+        history[f"{phase}_acc"].append(epoch_acc)
+        history[f"{phase}_precision"].append(precision)
+        history[f"{phase}_recall"].append(recall)
+        history[f"{phase}_f1"].append(f1)
+        history[f"{phase}_roc_auc"].append(roc_auc)
+        history[f"{phase}_pr_auc"].append(pr_auc)
         # -------- Early stopping check --------
         if phase == "val":
             if epoch_loss < best_val_loss:
@@ -370,3 +392,30 @@ with open(csv_file, mode="a", newline="") as f:
 
 print(f"Logged results for {results['model_name']}")
 print(f"Next checkpoint will be saved as: {checkpoint_path}")
+
+
+run_id = num_entries + 1   # same as used in checkpoint name
+plot_dir = f"plots/model_{run_id}"
+os.makedirs(plot_dir, exist_ok=True)
+
+def plot_metric(train_vals, val_vals, metric_name):
+    plt.figure()
+    plt.plot(train_vals, label="Train")
+    plt.plot(val_vals, label="Validation")
+    plt.xlabel("Epoch")
+    plt.ylabel(metric_name)
+    plt.title(f"{metric_name} over Epochs")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{plot_dir}/{metric_name.lower().replace(' ','_')}.png")
+    plt.close()
+
+plot_metric(history["train_loss"], history["val_loss"], "Loss")
+plot_metric(history["train_acc"], history["val_acc"], "Accuracy")
+plot_metric(history["train_precision"], history["val_precision"], "Precision")
+plot_metric(history["train_recall"], history["val_recall"], "Recall")
+plot_metric(history["train_f1"], history["val_f1"], "F1 Score")
+plot_metric(history["train_roc_auc"], history["val_roc_auc"], "ROC-AUC")
+plot_metric(history["train_pr_auc"], history["val_pr_auc"], "PR-AUC")
+
+print(f"Saved all metric plots in '{plot_dir}/'")
