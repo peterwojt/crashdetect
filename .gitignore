@@ -6,7 +6,7 @@ demo/output/
 venv/
 crashes/
 videos/
+models/
 labels.csv
 .DS_Store
 videos.tar.xz
-best_model.pth

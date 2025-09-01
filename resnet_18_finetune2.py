@@ -1,4 +1,5 @@
 import os
+import csv
 import random
 import torch
 import torch.nn as nn
@@ -186,13 +187,24 @@ val_size = len(val_c + val_n + val_z)
 # Training loop
 # ------------------------
 
-num_epochs = 30
-patience = 5   # stop if val loss doesn’t improve for 5 epochs
+num_epochs = 150
+patience = 10   # stop if val loss doesn’t improve for 5 epochs
 
 best_val_loss = float("inf")
 epochs_no_improve = 0
 best_epoch = -1
-checkpoint_path = "best_model.pth"
+csv_file = "model_metrics_log.csv"
+
+# Count how many entries (rows) are in the CSV
+num_entries = 0
+if os.path.isfile(csv_file):
+    with open(csv_file, "r") as f:
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        num_entries = sum(1 for _ in reader)
+
+# New model checkpoint name based on entries
+checkpoint_path = f"models/model_{num_entries+1}.pth"
 
 for epoch in range(num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}")
@@ -331,3 +343,30 @@ print(f"ROC-AUC  : {roc_auc:.4f}")
 print(f"PR-AUC   : {pr_auc:.4f}")
 print(f"Confusion Matrix:\n{cm}")
 print(f"TP={tp} FP={fp} FN={fn} TN={tn}")
+
+results = {
+    "model_name": checkpoint_path,
+    "accuracy":  accuracy,
+    "precision": precision,
+    "recall":    recall,
+    "f1":        f1,
+    "roc_auc":   roc_auc,
+    "pr_auc":    pr_auc,
+    "tp":        tp,
+    "fp":        fp,
+    "fn":        fn,
+    "tn":        tn,
+}
+
+# -----------------------
+# Append results to CSV
+# -----------------------
+file_exists = os.path.isfile(csv_file)
+with open(csv_file, mode="a", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=results.keys())
+    if not file_exists:
+        writer.writeheader()  # write header first time
+    writer.writerow(results)
+
+print(f"Logged results for {results['model_name']}")
+print(f"Next checkpoint will be saved as: {checkpoint_path}")
