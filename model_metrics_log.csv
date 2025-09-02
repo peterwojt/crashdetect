@@ -1,0 +1,3 @@
+model name,description,accuracy,precision,recall,roc auc,pr auc,tp,fp,fn,tn
+models/model_1.pth,Model is based on resnet18 with all but the last layer frozen. 150 epochs with 10 epoch patience.,0.8556527590847914,0.855621301775148,0.9717741935483871,0.9100062932662052,0.922761067519132,0.9721474597466195,2169,366,63,374
+models/model_2.pth,Model is based on resnet18 with layers fc 3 and 4 unfrozen. 150 epochs with 10 epoch patience.,0.8647375504710633,0.8806156405990017,0.9484767025089605,0.9132873166522865,0.9165670711033614,0.9695129321595757,2117,287,115,453

@@ -4,6 +4,7 @@ data/
 demo/input/
 demo/output/
 venv/
+example_images/
 crashes/
 videos/
 models/

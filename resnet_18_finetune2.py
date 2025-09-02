@@ -134,6 +134,16 @@ device = torch.device("cpu")  # CPU-only
 transform = transforms.Compose([
     RandomPadTo224Tensor(),
     transforms.RandomHorizontalFlip(),
+    transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),   # zoom in/out, crop
+    transforms.RandomHorizontalFlip(p=0.5),                # flip left-right
+    transforms.ColorJitter(brightness=0.2, 
+                           contrast=0.2, 
+                           saturation=0.2, 
+                           hue=0.05),                      # color variation
+    transforms.RandomRotation(degrees=10),                 # small rotations
+    transforms.RandomAffine(degrees=0, 
+                            translate=(0.1, 0.1)),         # small shifts
+    transforms.RandomErasing(p=0.3, scale=(0.02, 0.1)),
     transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
 ])
 
@@ -167,7 +177,7 @@ for param in model.parameters():
 
 # Unfreeze only layer4 + fc
 for name, param in model.named_parameters():
-    if name.startswith("layer4") or name.startswith("fc"):
+    if name.startswith("layer4") or name.startswith("layer3") or name.startswith("fc"):
         param.requires_grad = True
 
 
@@ -268,7 +278,7 @@ for epoch in range(num_epochs):
             fn_total += fn
 
             # Save for ROC/PR
-            probs = F.softmax(outputs, dim=1)[:,0]  # prob of class 0 (positive)
+            probs = F.softmax(outputs, dim=1)[:,1]  # prob of class 0 (positive)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             all_probs.extend(probs.detach().cpu().numpy())
@@ -371,7 +381,7 @@ print(f"TP={tp} FP={fp} FN={fn} TN={tn}")
 
 results = {
     "model_name": checkpoint_path,
-    "model_description" : "Model is based on resnet18 with all but the last 4 layers frozen. 150 epochs with 10 epoch patience.",
+    "model_description" : "Model is based on resnet18 with layers fc 3 and 4 unfrozen. 150 epochs with 10 epoch patience.",
     "accuracy":  accuracy,
     "precision": precision,
     "recall":    recall,
