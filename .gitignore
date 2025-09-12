@@ -1,6 +1,8 @@
 input/
 output/
 data/
+car_crash_video_dataset/
+crash_no_crash_dataset/
 demo/input/
 demo/output/
 venv/
