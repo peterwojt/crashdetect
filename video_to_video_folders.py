@@ -9,7 +9,7 @@ LABELS_CSV = "labels.csv"
 OUTPUT_DIR = "car_crash_video_dataset"
 
 # Ratio of non-crash to crash videos
-NON_CRASH_RATIO = 2  # Change this value as needed
+NON_CRASH_RATIO = 1  # Change this value as needed
 
 # Create output directories
 splits = ['train', 'val', 'test']

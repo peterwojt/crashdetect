@@ -12,7 +12,7 @@ import random
 
 # Paths
 DATA_DIR = "car_crash_video_dataset"
-BATCH_SIZE = 1
+BATCH_SIZE = 8
 NUM_EPOCHS = 10
 NUM_CLASSES = 2
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -52,17 +52,22 @@ def temporal_augmentation(video, frames_per_clip=8):
     return sampled_frames
 
 class SimpleVideoDataset(Dataset):
-    def __init__(self, root_dir, transform=None, frames_per_clip=8, spatial_aug=False, temporal_aug=False):
+    def __init__(self, root_dir, transform=None, frames_per_clip=8, spatial_aug=False, temporal_aug=False, num_augmentations=0):
         self.samples = []
         self.transform = transform
         self.frames_per_clip = frames_per_clip
         self.spatial_aug = spatial_aug
         self.temporal_aug = temporal_aug
+        self.num_augmentations = num_augmentations
+
         for label in ['crash', 'non_crash']:
             class_dir = os.path.join(root_dir, label)
             for fname in os.listdir(class_dir):
                 if fname.endswith('.mp4'):
+
                     self.samples.append((os.path.join(class_dir, fname), 0 if label == 'non_crash' else 1))
+                    for _ in range(self.num_augmentations):
+                        self.samples.append((os.path.join(class_dir, fname), 0 if label == 'non_crash' else 1))
 
     def __len__(self):
         return len(self.samples)
@@ -94,6 +99,36 @@ class SimpleVideoDataset(Dataset):
         return video, label
 
 
+class EarlyStopping:
+    def __init__(self, patience=3, min_delta=0.0):
+        """
+        Args:
+            patience (int): how many epochs to wait after last improvement
+            min_delta (float): minimum change in val_acc to qualify as improvement
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_acc = None
+        self.early_stop = False
+
+    def __call__(self, val_acc):
+        if self.best_acc is None:
+            self.best_acc = val_acc
+            return False
+
+        if val_acc < self.best_acc + self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_acc = val_acc
+            self.counter = 0
+
+        return self.early_stop
+
+
+
 # Remove transforms.ToTensor() from your transform pipeline
 transform = None
 
@@ -104,6 +139,7 @@ train_dataset = SimpleVideoDataset(
     frames_per_clip=FRAMES_PER_CLIP,
     spatial_aug=True,
     temporal_aug=True,
+    num_augmentations=3
 )
 
 val_dataset = SimpleVideoDataset(
@@ -128,26 +164,40 @@ test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Load pretrained 3D ResNet
 model = torchvision.models.video.r3d_18(pretrained=True)
-model.fc = nn.Linear(model.fc.in_features, NUM_CLASSES)
+
+#model.fc = nn.Linear(model.fc.in_features, NUM_CLASSES)
+
+# Replace fc with dropout + linear
+model.fc = nn.Sequential(
+    nn.Dropout(p=0.5),
+    nn.Linear(model.fc.in_features, NUM_CLASSES)
+)
 model = model.to(DEVICE)
 
 for name, param in model.named_parameters():
-    if "layer4" not in name and "fc" not in name:
-    #if "fc" not in name:
+    #if "layer4" not in name and "fc" not in name:
+    if "fc" not in name:
         param.requires_grad = False
+    
     else:
         param.requires_grad = True
 
-#for name, param in model.named_parameters():
-    #print(name, param.requires_grad)
+for name, param in model.layer4[1].conv2.named_parameters():
+    param.requires_grad = True
+
+for name, param in model.named_parameters():
+    print(name, param.requires_grad)
 
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Trainable parameters: {trainable_params}")
 
+early_stopping = EarlyStopping(patience=3, min_delta=0.5)  # tune these values
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-4)
+optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+
+best_val_loss = 0.0
 
 # Training loop
 for epoch in range(NUM_EPOCHS):
@@ -237,5 +287,13 @@ for epoch in range(NUM_EPOCHS):
     for cls in [0, 1]:
         acc = 100 * val_class_correct[cls] / val_class_total[cls] if val_class_total[cls] > 0 else 0.0
         print(f"  Class {cls} — {val_class_correct[cls]}/{val_class_total[cls]} correct ({acc:.2f}%)")
+    if val_loss > best_val_loss:
+        best_val_loss = val_loss
+        torch.save(model.state_dict(), "r3d18_best.pth")
+        print(f"Best model updated at epoch {epoch+1}, val_acc={val_acc:.2f}%")
+
+    if early_stopping(val_loss):
+        print(f"Early stopping triggered at epoch {epoch+1}")
+        break
 
 print("Finetuning complete.")

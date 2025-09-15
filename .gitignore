@@ -14,6 +14,7 @@ models/
 optical_flow_dataset/
 latent_data2/
 flow_logistic_data/
+r3d18_best.pth
 plots/
 autoencoder.pth
 labels.csv
