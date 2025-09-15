@@ -9,8 +9,13 @@ venv/
 example_images/
 crashes/
 videos/
+latent_data/
 models/
+optical_flow_dataset/
+latent_data2/
+flow_logistic_data/
 plots/
+autoencoder.pth
 labels.csv
 .DS_Store
 videos.tar.xz
