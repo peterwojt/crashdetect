@@ -13,7 +13,7 @@ import random
 # Paths
 DATA_DIR = "car_crash_video_dataset"
 BATCH_SIZE = 8
-NUM_EPOCHS = 10
+NUM_EPOCHS = 80
 NUM_CLASSES = 2
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 FRAMES_PER_CLIP = 16  # Number of frames per video clip
@@ -139,7 +139,7 @@ train_dataset = SimpleVideoDataset(
     frames_per_clip=FRAMES_PER_CLIP,
     spatial_aug=True,
     temporal_aug=True,
-    num_augmentations=3
+    num_augmentations=7
 )
 
 val_dataset = SimpleVideoDataset(
@@ -195,7 +195,10 @@ early_stopping = EarlyStopping(patience=3, min_delta=0.5)  # tune these values
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+optimizer = torch.optim.Adam([
+    {"params": model.layer4.parameters(), "lr": 1e-5},
+    {"params": model.fc.parameters(), "lr": 1e-4}
+])
 
 best_val_loss = 0.0
 
@@ -287,7 +290,7 @@ for epoch in range(NUM_EPOCHS):
     for cls in [0, 1]:
         acc = 100 * val_class_correct[cls] / val_class_total[cls] if val_class_total[cls] > 0 else 0.0
         print(f"  Class {cls} — {val_class_correct[cls]}/{val_class_total[cls]} correct ({acc:.2f}%)")
-    if val_loss > best_val_loss:
+    if val_loss < best_val_loss:
         best_val_loss = val_loss
         torch.save(model.state_dict(), "r3d18_best.pth")
         print(f"Best model updated at epoch {epoch+1}, val_acc={val_acc:.2f}%")
@@ -297,3 +300,39 @@ for epoch in range(NUM_EPOCHS):
         break
 
 print("Finetuning complete.")
+
+
+model.eval()
+test_correct = 0
+test_total = 0
+test_loss = 0.0
+test_class_correct = [0, 0]
+test_class_total = [0, 0]
+
+with torch.no_grad():
+    for videos, labels in test_loader:
+        videos = videos.to(DEVICE)
+        labels = labels.to(DEVICE)
+        outputs = model(videos)
+        loss = criterion(outputs, labels)
+        test_loss += loss.item()
+
+        _, predicted = torch.max(outputs, 1)
+        test_correct += (predicted == labels).sum().item()
+        test_total += labels.size(0)
+
+        for i in range(len(labels)):
+            label = labels[i].item()
+            pred = predicted[i].item()
+            test_class_total[label] += 1
+            if label == pred:
+                test_class_correct[label] += 1
+
+test_acc = test_correct / test_total * 100
+test_avg_loss = test_loss / len(test_loader)
+print(f"Test — Avg Loss: {test_avg_loss:.4f}, Accuracy: {test_acc:.2f}%")
+
+print("Test class-wise correct predictions:")
+for cls in [0, 1]:
+    acc = 100 * test_class_correct[cls] / test_class_total[cls] if test_class_total[cls] > 0 else 0.0
+    print(f"  Class {cls} — {test_class_correct[cls]}/{test_class_total[cls]} correct ({acc:.2f}%)")
