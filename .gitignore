@@ -20,3 +20,4 @@ autoencoder.pth
 labels.csv
 .DS_Store
 videos.tar.xz
+r3d18_best1.pth

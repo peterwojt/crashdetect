@@ -98,34 +98,28 @@ class SimpleVideoDataset(Dataset):
         video = video.permute(1, 0, 2, 3)
         return video, label
 
-
 class EarlyStopping:
-    def __init__(self, patience=3, min_delta=0.0):
-        """
-        Args:
-            patience (int): how many epochs to wait after last improvement
-            min_delta (float): minimum change in val_acc to qualify as improvement
-        """
+    def __init__(self, patience=5, min_delta=0.0):
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
-        self.best_acc = None
+        self.best_loss = None
         self.early_stop = False
 
-    def __call__(self, val_acc):
-        if self.best_acc is None:
-            self.best_acc = val_acc
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
             return False
 
-        if val_acc < self.best_acc + self.min_delta:
+        if val_loss > self.best_loss - self.min_delta:  # no improvement
             self.counter += 1
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
-            self.best_acc = val_acc
+            self.best_loss = val_loss
             self.counter = 0
-
         return self.early_stop
+
 
 
 
@@ -139,7 +133,7 @@ train_dataset = SimpleVideoDataset(
     frames_per_clip=FRAMES_PER_CLIP,
     spatial_aug=True,
     temporal_aug=True,
-    num_augmentations=7
+    num_augmentations=3
 )
 
 val_dataset = SimpleVideoDataset(
@@ -191,16 +185,16 @@ for name, param in model.named_parameters():
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Trainable parameters: {trainable_params}")
 
-early_stopping = EarlyStopping(patience=3, min_delta=0.5)  # tune these values
+early_stopping = EarlyStopping(patience=8, min_delta=0.0)  # tune these values
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam([
-    {"params": model.layer4.parameters(), "lr": 1e-5},
-    {"params": model.fc.parameters(), "lr": 1e-4}
-])
+    {"params": model.layer4.parameters(), "lr": 5e-5},
+    {"params": model.fc.parameters(), "lr": 5e-5}
+], weight_decay=1e-4)
 
-best_val_loss = 0.0
+best_val_loss = 10.0
 
 # Training loop
 for epoch in range(NUM_EPOCHS):
@@ -284,14 +278,15 @@ for epoch in range(NUM_EPOCHS):
 
     val_acc = val_correct / val_total * 100
     val_avg_loss = val_loss / len(val_loader)
+
     print(f"Validation — Avg Loss: {val_avg_loss:.4f}, Accuracy: {val_acc:.2f}%")
 
     print("Validation class-wise correct predictions:")
     for cls in [0, 1]:
         acc = 100 * val_class_correct[cls] / val_class_total[cls] if val_class_total[cls] > 0 else 0.0
         print(f"  Class {cls} — {val_class_correct[cls]}/{val_class_total[cls]} correct ({acc:.2f}%)")
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
+    if val_avg_loss < best_val_loss:
+        best_val_loss = val_avg_loss
         torch.save(model.state_dict(), "r3d18_best.pth")
         print(f"Best model updated at epoch {epoch+1}, val_acc={val_acc:.2f}%")
 
