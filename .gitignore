@@ -2,7 +2,9 @@ input/
 output/
 data/
 car_crash_video_dataset/
+car_crash_video_dataset2/
 crash_no_crash_dataset/
+motion_info/
 demo/input/
 demo/output/
 venv/
@@ -21,3 +23,5 @@ labels.csv
 .DS_Store
 videos.tar.xz
 r3d18_best1.pth
+r2plus1d18_best1.pth
+r18_gru_best1.pth

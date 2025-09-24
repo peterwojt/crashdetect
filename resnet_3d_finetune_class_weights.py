@@ -10,13 +10,32 @@ import torch.nn.functional as F
 import random
 
 
+
 # Paths
-DATA_DIR = "car_crash_video_dataset"
-BATCH_SIZE = 4
+DATA_DIR = "car_crash_video_dataset2"
+BATCH_SIZE = 2
 NUM_EPOCHS = 80
 NUM_CLASSES = 2
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 FRAMES_PER_CLIP = 16  # Number of frames per video clip
+
+
+
+# Class distribution
+num_non_crash = 13553
+num_crash = 684
+total = num_non_crash + num_crash
+
+# Inverse frequency weighting
+weight_non_crash = total / (2 * num_non_crash)
+weight_crash = total / (2 * num_crash)
+
+# Class weights tensor
+class_weights = torch.tensor([weight_non_crash, weight_crash], dtype=torch.float).to(DEVICE)
+
+
+
+
 
 # Transforms for video frames
 transform = transforms.Compose([
@@ -52,21 +71,28 @@ def temporal_augmentation(video, frames_per_clip=8):
     return sampled_frames
 
 class SimpleVideoDataset(Dataset):
-    def __init__(self, root_dir, transform=None, frames_per_clip=8, spatial_aug=False, temporal_aug=False, num_augmentations=0):
+    def __init__(self, root_dir, transform=None, frames_per_clip=8, spatial_aug=False, temporal_aug=False, num_aug_crash=0, num_aug_no_crash=0):
         self.samples = []
         self.transform = transform
         self.frames_per_clip = frames_per_clip
         self.spatial_aug = spatial_aug
         self.temporal_aug = temporal_aug
-        self.num_augmentations = num_augmentations
 
         for label in ['crash', 'non_crash']:
             class_dir = os.path.join(root_dir, label)
+
+            label_idx = 1 if label == 'crash' else 0
+
+            if label == 'crash':
+                num_augmentations = num_aug_crash
+            else:
+                num_augmentations = num_aug_no_crash
+
             for fname in os.listdir(class_dir):
                 if fname.endswith('.mp4'):
 
                     self.samples.append((os.path.join(class_dir, fname), 0 if label == 'non_crash' else 1))
-                    for _ in range(self.num_augmentations):
+                    for _ in range(num_augmentations):
                         self.samples.append((os.path.join(class_dir, fname), 0 if label == 'non_crash' else 1))
 
     def __len__(self):
@@ -133,7 +159,8 @@ train_dataset = SimpleVideoDataset(
     frames_per_clip=FRAMES_PER_CLIP,
     spatial_aug=True,
     temporal_aug=True,
-    num_augmentations=3
+    num_aug_crash=3,
+    num_aug_no_crash=0
 )
 
 val_dataset = SimpleVideoDataset(
@@ -157,9 +184,8 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Load pretrained 3D ResNet
-#model = torchvision.models.video.r3d_18(pretrained=True)
-
 model = torchvision.models.video.r2plus1d_18(pretrained=True)
+
 #model.fc = nn.Linear(model.fc.in_features, NUM_CLASSES)
 
 # Replace fc with dropout + linear
@@ -189,7 +215,7 @@ print(f"Trainable parameters: {trainable_params}")
 early_stopping = EarlyStopping(patience=8, min_delta=0.0)  # tune these values
 
 # Loss and optimizer
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(weight=class_weights)
 optimizer = torch.optim.Adam([
     {"params": model.layer4.parameters(), "lr": 5e-5},
     {"params": model.fc.parameters(), "lr": 5e-5}
@@ -288,7 +314,7 @@ for epoch in range(NUM_EPOCHS):
         print(f"  Class {cls} — {val_class_correct[cls]}/{val_class_total[cls]} correct ({acc:.2f}%)")
     if val_avg_loss < best_val_loss:
         best_val_loss = val_avg_loss
-        torch.save(model.state_dict(), "r3d18_best.pth")
+        torch.save(model.state_dict(), "r2plus1d18_best.pth")
         print(f"Best model updated at epoch {epoch+1}, val_acc={val_acc:.2f}%")
 
     if early_stopping(val_loss):

@@ -121,6 +121,28 @@ class EarlyStopping:
         return self.early_stop
 
 
+class ResNetGRUClassifier(nn.Module):
+    def __init__(self, backbone, hidden_dim=256, num_classes=2):
+        super().__init__()
+        self.backbone = backbone  # 2D ResNet
+        self.rnn = nn.GRU(input_size=512, hidden_size=hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, num_classes)
+
+    def forward(self, x):  # x: (B, C, T, H, W)
+        B, C, T, H, W = x.shape
+        x = x.permute(0, 2, 1, 3, 4)  # (B, T, C, H, W)
+
+        feats = []
+        for t in range(T):
+            frame = x[:, t]  # (B, C, H, W)
+            with torch.no_grad():
+                feat = self.backbone(frame)  # (B, 512)
+            feats.append(feat)
+
+        feats = torch.stack(feats, dim=1)  # (B, T, 512)
+        out, _ = self.rnn(feats)  # (B, T, hidden_dim)
+        out = out[:, -1, :]       # take last hidden state
+        return self.fc(out)
 
 
 # Remove transforms.ToTensor() from your transform pipeline
@@ -159,26 +181,15 @@ test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 # Load pretrained 3D ResNet
 #model = torchvision.models.video.r3d_18(pretrained=True)
 
-model = torchvision.models.video.r2plus1d_18(pretrained=True)
-#model.fc = nn.Linear(model.fc.in_features, NUM_CLASSES)
+resnet = torchvision.models.resnet18(pretrained=True)
+resnet.fc = nn.Identity()
 
-# Replace fc with dropout + linear
-model.fc = nn.Sequential(
-    nn.Dropout(p=0.5),
-    nn.Linear(model.fc.in_features, NUM_CLASSES)
-)
+for param in resnet.parameters():
+    param.requires_grad = False
+
+model = ResNetGRUClassifier(resnet, hidden_dim=256, num_classes=2).to(DEVICE)
+
 model = model.to(DEVICE)
-
-for name, param in model.named_parameters():
-    #if "layer4" not in name and "fc" not in name:
-    if "fc" not in name:
-        param.requires_grad = False
-    
-    else:
-        param.requires_grad = True
-
-for name, param in model.layer4[1].conv2.named_parameters():
-    param.requires_grad = True
 
 for name, param in model.named_parameters():
     print(name, param.requires_grad)
@@ -190,10 +201,8 @@ early_stopping = EarlyStopping(patience=8, min_delta=0.0)  # tune these values
 
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam([
-    {"params": model.layer4.parameters(), "lr": 5e-5},
-    {"params": model.fc.parameters(), "lr": 5e-5}
-], weight_decay=1e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=5e-5, weight_decay=1e-4)
+
 
 best_val_loss = 10.0
 
@@ -288,7 +297,7 @@ for epoch in range(NUM_EPOCHS):
         print(f"  Class {cls} — {val_class_correct[cls]}/{val_class_total[cls]} correct ({acc:.2f}%)")
     if val_avg_loss < best_val_loss:
         best_val_loss = val_avg_loss
-        torch.save(model.state_dict(), "r3d18_best.pth")
+        torch.save(model.state_dict(), "r18_gru_best.pth")
         print(f"Best model updated at epoch {epoch+1}, val_acc={val_acc:.2f}%")
 
     if early_stopping(val_loss):

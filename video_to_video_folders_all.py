@@ -6,10 +6,7 @@ from sklearn.model_selection import train_test_split
 # Paths
 VIDEOS_DIR = "videos"
 LABELS_CSV = "labels.csv"
-OUTPUT_DIR = "car_crash_video_dataset"
-
-# Ratio of non-crash to crash videos
-NON_CRASH_RATIO = 1  # Change this value as needed
+OUTPUT_DIR = "car_crash_video_dataset2"
 
 # Create output directories
 splits = ['train', 'val', 'test']
@@ -18,29 +15,20 @@ for split in splits:
     for cls in classes:
         os.makedirs(os.path.join(OUTPUT_DIR, split, cls), exist_ok=True)
 
-# Read labels# Read labels
+# Read labels
 df = pd.read_csv(LABELS_CSV)
 
 # Keep only labels 'c', 'n', 'z'
 df = df[df['label'].isin(['c', 'n', 'z'])]
 
-# Map: 'c' → crash, 'n' and 'z' → non_crash
+# Map labels to classes
 df['class'] = df['label'].apply(lambda x: 'crash' if x == 'c' else 'non_crash')
 
-# Select all crash videos
-crash_df = df[df['class'] == 'crash']
+# Shuffle the data
+df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
-# Sample non-crash videos
-non_crash_df = df[df['class'] == 'non_crash']
-n_crash = len(crash_df)
-n_non_crash = min(len(non_crash_df), NON_CRASH_RATIO * n_crash)
-non_crash_sampled_df = non_crash_df.sample(n=n_non_crash, random_state=42)
-
-# Combine and shuffle
-balanced_df = pd.concat([crash_df, non_crash_sampled_df]).sample(frac=1, random_state=42).reset_index(drop=True)
-
-# Split data
-train_df, temp_df = train_test_split(balanced_df, test_size=0.3, random_state=42, stratify=balanced_df['class'])
+# Stratified split
+train_df, temp_df = train_test_split(df, test_size=0.3, random_state=42, stratify=df['class'])
 val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42, stratify=temp_df['class'])
 
 split_map = {
@@ -49,7 +37,7 @@ split_map = {
     'test': test_df
 }
 
-# Move files
+# Copy files into the output directory
 for split, split_df in split_map.items():
     for _, row in split_df.iterrows():
         src = os.path.join(VIDEOS_DIR, row['filename'])
