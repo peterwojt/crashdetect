@@ -79,7 +79,7 @@ def associate_detections_to_trackers(dets, trks, iou_threshold=0.3):
 
     unmatched_trks = []
     for t in range(len(trks)):
-        if t not in matched_indices[:, 1]:
+        if matched_indices.size == 0 or t not in matched_indices[:, 1]:
             unmatched_trks.append(t)
 
     matches = []

@@ -30,8 +30,8 @@ tracker = Sort()
 # Confidence threshold
 CONF_THRESH = 0.5
 
-cap = cv2.VideoCapture('car_crash_video_dataset/train/crash/2110.mp4')  # Or 'your_video.mp4'
-
+#cap = cv2.VideoCapture('car_crash_video_dataset/train/crash/2110.mp4')  # Or 'your_video.mp4'
+cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
 while True:
     ret, frame = cap.read()
     if not ret:

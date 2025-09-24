@@ -27,8 +27,8 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 CONFIDENCE_THRESHOLD = 0.5
 
 # Open video capture (0 for webcam, or filename)
-cap = cv2.VideoCapture('car_crash_video_dataset/train/crash/2110.mp4')  # Change to 'your_video.mp4' to read from a file
-
+#cap = cv2.VideoCapture('car_crash_video_dataset/train/crash/2110.mp4')  # Change to 'your_video.mp4' to read from a file
+cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
 while True:
     ret, frame = cap.read()
     if not ret:
