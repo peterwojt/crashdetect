@@ -1,7 +1,10 @@
 import cv2
 import torch
+import time
+
 #from torchvision.models.detection import fasterrcnn_resnet50_fpn
-from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+#from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+from torchvision.models.detection import fcos_resnet50_fpn
 from torchvision import transforms
 import numpy as np
 
@@ -10,7 +13,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load pre-trained Faster R-CNN model
 #model = fasterrcnn_resnet50_fpn(pretrained=True)
-model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
+#model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
+model = fcos_resnet50_fpn(pretrained=True)
 
 model.eval()
 model.to(device)
@@ -32,7 +36,7 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 ]
 
 # Video source (0 = webcam) or file path
-cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
+cap = cv2.VideoCapture('media_w1117040928_7.ts')
 # Define preprocessing transform
 transform = transforms.Compose([
     transforms.ToTensor()
@@ -46,6 +50,7 @@ while True:
     if not ret:
         break
 
+    start_time = time.time() 
     # Convert frame to RGB
     image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     image_tensor = transform(image).to(device)
@@ -56,6 +61,10 @@ while True:
     with torch.no_grad():
         outputs = model([image_tensor])
 
+    end_time = time.time()  # End timing
+
+    # Calculate inference time in milliseconds
+    inference_time_ms = (end_time - start_time) * 1000
     # Extract predictions
     pred = outputs[0]
     boxes = pred['boxes'].cpu().numpy()
@@ -76,6 +85,8 @@ while True:
         cv2.putText(frame, f"{class_name}: {score:.2f}", (x1, y1 - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
+    cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
     # Show the frame
     cv2.imshow("Faster R-CNN Detection", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
