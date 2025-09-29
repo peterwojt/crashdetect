@@ -15,7 +15,7 @@ def iou(bb_test, bb_gt):
     return o
 
 class Sort:
-    def __init__(self, max_age=5, min_hits=1, iou_threshold=0.1):
+    def __init__(self, max_age=30, min_hits=1, iou_threshold=0.1):
         self.trackers = []
         self.frame_count = 0
         self.max_age = max_age

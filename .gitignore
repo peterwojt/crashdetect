@@ -2,7 +2,9 @@ input/
 output/
 data/
 car_crash_video_dataset/
+crash_clips_to_train/
 car_crash_video_dataset2/
+crash_clips/
 yolo_model/
 crash_no_crash_dataset/
 motion_info/

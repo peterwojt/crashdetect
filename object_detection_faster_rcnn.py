@@ -3,8 +3,10 @@ import torch
 import time
 
 #from torchvision.models.detection import fasterrcnn_resnet50_fpn
-#from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
-from torchvision.models.detection import fcos_resnet50_fpn
+from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+#from torchvision.models.detection import fcos_resnet50_fpn
+#from torchvision.models.detection import retinanet_resnet50_fpn_v2
+
 from torchvision import transforms
 import numpy as np
 
@@ -13,8 +15,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load pre-trained Faster R-CNN model
 #model = fasterrcnn_resnet50_fpn(pretrained=True)
-#model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
-model = fcos_resnet50_fpn(pretrained=True)
+model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval()
+#model = retinanet_resnet50_fpn_v2(pretrained=True)
+#model = fcos_resnet50_fpn(pretrained=True)
 
 model.eval()
 model.to(device)
@@ -36,7 +39,8 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 ]
 
 # Video source (0 = webcam) or file path
-cap = cv2.VideoCapture('media_w1117040928_7.ts')
+#cap = cv2.VideoCapture('media_w1117040928_7.ts')
+cap = cv2.VideoCapture('crashes/2023-2024/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
 # Define preprocessing transform
 transform = transforms.Compose([
     transforms.ToTensor()

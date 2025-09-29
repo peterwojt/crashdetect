@@ -1,12 +1,12 @@
 import torch
-from torchvision.models.detection import ssd300_vgg16
+from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
 from torchvision.transforms import functional as F
 import cv2
 import numpy as np
 from tracker import Sort  # Make sure this file is in the same folder
 
 # Load model
-model = ssd300_vgg16(pretrained=True).eval()
+model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval()
 
 # Class names (COCO)
 COCO_CLASSES = [
@@ -31,7 +31,7 @@ tracker = Sort()
 CONF_THRESH = 0.5
 
 #cap = cv2.VideoCapture('car_crash_video_dataset/train/crash/2110.mp4')  # Or 'your_video.mp4'
-cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
+cap = cv2.VideoCapture('crashes/2023-2024/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
 while True:
     ret, frame = cap.read()
     if not ret:
