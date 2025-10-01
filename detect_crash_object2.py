@@ -28,7 +28,7 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 ]
 
 transform = transforms.Compose([transforms.ToTensor()])
-DETECTION_THRESHOLD = 0.7
+DETECTION_THRESHOLD = 0.65
 PREDICTION_FRAMES = 3  # how many frames ahead to predict for collision
 
 # -------------------------
@@ -65,6 +65,8 @@ class Track:
         self.last_seen = timestamp_frame
         self.vx = 0.0
         self.vy = 0.0
+
+        
 
     def update(self, bbox, score, label, timestamp_frame, alpha=0.6):
         cx_old = (self.bbox[0] + self.bbox[2]) / 2.0
@@ -181,10 +183,13 @@ def is_moving(track, min_speed=5.0, min_frames=5):
 # Main loop
 # -------------------------
 if __name__ == "__main__":
-    #cap = cv2.VideoCapture('crashes/2023-2024/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
+    #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
+    #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
+    #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
-    cap = cv2.VideoCapture('crashes/2023-2024/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
-    #cap = cv2.VideoCapture('crashes/2023-2024/112_NE_2_-_W_2024-07-18_10_49_00_915.mp4')
+    #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
+    #cap = cv2.VideoCapture('crashes/112_NE_2_-_W_2024-07-18_10_49_00_915.mp4')
+    cap = cv2.VideoCapture('crashes/156_NE_8_-_N_2024-08-07_13_52_59_610.mp4')
     tracker = SimpleTracker(iou_threshold=0.1, max_age=15, min_hits=3, sticky_label=False)
 
     while True:
@@ -207,7 +212,7 @@ if __name__ == "__main__":
         labels = pred['labels'].cpu().numpy()
 
         
-        MIN_BOX_AREA = 5000 
+        MIN_BOX_AREA = 2000 
 
         detections = []
         for box, score, label in zip(boxes, scores, labels):
@@ -228,18 +233,19 @@ if __name__ == "__main__":
             label_idx = tr.get_label(sticky=tracker.sticky_label)
             class_name = COCO_INSTANCE_CATEGORY_NAMES[label_idx] if 0 <= label_idx < len(COCO_INSTANCE_CATEGORY_NAMES) else "N/A"
             color = (0, 255, 0)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            if class_name.lower() == "car" or "boat" or "plane" or "truck" or "motorcycle" or "train" or "bus":
+            
+            if class_name.lower() in {"car","boat","plane" , "truck" ,"motorcycle","train","bus"}:
                 car_tracks.append(tr)
-
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         # --- Crash detection using future positions ---
         for i in range(len(car_tracks)):
             for j in range(i + 1, len(car_tracks)):
                 tr1 = car_tracks[i]
                 tr2 = car_tracks[j]
 
+                # IMPORTANT: and means both have to be moving, or means only one
                 if not (is_moving(tr1) or is_moving(tr2)):
                     continue
 
@@ -247,11 +253,33 @@ if __name__ == "__main__":
                 future2 = predict_future_bbox(tr2)
 
                 if iou(future1, future2) > 0.1:
-                    # Relative velocity check
+                    # Relative velocity
+                    v_rel = np.array([tr2.vx - tr1.vx, tr2.vy - tr1.vy])
+                    rel_speed = np.linalg.norm(v_rel)
+
+                    # Require meaningful approach speed
+                    if rel_speed < 3:  
+                        continue  # moving too slowly → likely not a crash
+
+                    # Check angle of approach
+                    v1 = np.array([tr1.vx, tr1.vy])
+                    v2 = np.array([tr2.vx, tr2.vy])
+
+                    # IMPORTANT: 'or' says one is stopped, 'and' says both are stopped
+                    if np.linalg.norm(v1) < 1 or np.linalg.norm(v2) < 1:
+                        continue  # one is basically stopped
+
+                    cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+                    if cos_theta > 0.5:
+                        continue  # ~same direction (parallel lanes), skip
+
+                    # Relative position dot velocity → moving towards each other
                     dx = (future2[0]+future2[2])/2 - (future1[0]+future1[2])/2
                     dy = (future2[1]+future2[3])/2 - (future1[1]+future1[3])/2
-                    rel_v = (tr2.vx - tr1.vx)*dx + (tr2.vy - tr1.vy)*dy
-                    if rel_v < 1.0:
+                    rel_v = v_rel[0]*dx + v_rel[1]*dy
+
+                    if rel_v < 0:
                         # FLAG CRASH
                         x1_1, y1_1, x2_1, y2_1 = tr1.bbox.astype(int)
                         x1_2, y1_2, x2_2, y2_2 = tr2.bbox.astype(int)

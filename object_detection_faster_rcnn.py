@@ -40,7 +40,7 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 
 # Video source (0 = webcam) or file path
 #cap = cv2.VideoCapture('media_w1117040928_7.ts')
-cap = cv2.VideoCapture('crashes/2023-2024/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
+cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
 # Define preprocessing transform
 transform = transforms.Compose([
     transforms.ToTensor()
