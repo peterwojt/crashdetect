@@ -65,6 +65,10 @@ class Track:
         self.last_seen = timestamp_frame
         self.vx = 0.0
         self.vy = 0.0
+        self.ax = 0.0
+        self.ay = 0.0
+        self.history = []  # stores (frame, cx, cy, vx, vy, speed, ax, ay)
+
 
         
 
@@ -73,8 +77,11 @@ class Track:
         cy_old = (self.bbox[1] + self.bbox[3]) / 2.0
         cx_new = (bbox[0] + bbox[2]) / 2.0
         cy_new = (bbox[1] + bbox[3]) / 2.0
-        self.vx = 0.6 * self.vx + 0.4 * (cx_new - cx_old)
-        self.vy = 0.6 * self.vy + 0.4 * (cy_new - cy_old)
+        new_vx = 0.6 * self.vx + 0.4 * (cx_new - cx_old)
+        new_vy = 0.6 * self.vy + 0.4 * (cy_new - cy_old)
+        self.ax = new_vx - self.vx
+        self.ay = new_vy - self.vy
+        self.vx, self.vy = new_vx, new_vy
 
         self.bbox = alpha * self.bbox + (1 - alpha) * np.array(bbox, dtype=float)
         self.score = max(self.score, float(score))
@@ -83,6 +90,10 @@ class Track:
         self.age += 1
         self.time_since_update = 0
         self.last_seen = timestamp_frame
+        
+        speed = np.hypot(self.vx, self.vy)
+        self.history.append((timestamp_frame, cx_new, cy_new, self.vx, self.vy, speed, self.ax, self.ay))
+
 
     def predict(self):
         cx = (self.bbox[0] + self.bbox[2]) / 2.0
@@ -178,18 +189,62 @@ def is_moving(track, min_speed=5.0, min_frames=5):
     speed = np.hypot(track.vx, track.vy)
     return speed > min_speed and track.hits > min_frames
 
+def analyze_post_crash(tracker, verified_crashes, post_frames=5, decel_threshold=1.0):
+    """
+    Check for deceleration after a verified crash.
+    - post_frames: number of frames after crash to check
+    - decel_threshold: minimum speed drop (pixels/frame) considered deceleration
+    """
+    crash_results = []
+
+    for c in verified_crashes:
+        tr_id1, tr_id2 = c["tracks"]
+        tr1 = next((t for t in tracker.tracks if t.track_id == tr_id1), None)
+        tr2 = next((t for t in tracker.tracks if t.track_id == tr_id2), None)
+        if tr1 is None or tr2 is None:
+            continue
+
+        frame_of_crash = c["frame"]
+        decel_flag = False
+
+        for tr in [tr1, tr2]:
+            # get history entries after the crash frame
+            post_hist = [h for h in tr.history if h[0] > frame_of_crash]
+            post_hist = post_hist[:post_frames]  # only next few frames
+
+            if len(post_hist) < 2:
+                continue  # not enough frames to measure deceleration
+
+            # compute speed drop
+            speed_before = next(h for h in tr.history if h[0] == frame_of_crash)[5]
+            speed_after = post_hist[-1][5]
+            decel = speed_before - speed_after
+
+            if decel >= decel_threshold:
+                decel_flag = True
+
+        c["deceleration"] = decel_flag
+        crash_results.append(c)
+
+    return crash_results
+
+track_speed_history = {}
+post_crash_monitor = []       # monitor deceleration after crash
+PRE_CRASH_FRAMES = 5      # frames to average before crash
+POST_CRASH_FRAMES = 5     # frames to average after crash
+DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 
 # -------------------------
 # Main loop
 # -------------------------
 if __name__ == "__main__":
-    #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
+    cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
     #cap = cv2.VideoCapture('crashes/112_NE_2_-_W_2024-07-18_10_49_00_915.mp4')
-    cap = cv2.VideoCapture('crashes/156_NE_8_-_N_2024-08-07_13_52_59_610.mp4')
+    #cap = cv2.VideoCapture('crashes/156_NE_8_-_N_2024-08-07_13_52_59_610.mp4')
     tracker = SimpleTracker(iou_threshold=0.1, max_age=15, min_hits=3, sticky_label=False)
 
     while True:
@@ -225,6 +280,15 @@ if __name__ == "__main__":
             detections.append([x1, y1, x2, y2, float(score), int(label)])
 
         tracks = tracker.update(detections)
+        # Make sure every track has a history entry for this frame
+        for tr in tracks:
+            speed = np.hypot(tr.vx, tr.vy)
+            if tr.track_id not in track_speed_history:
+                track_speed_history[tr.track_id] = []
+            track_speed_history[tr.track_id].append(speed)
+            # Keep only the last PRE_CRASH_FRAMES frames
+            if len(track_speed_history[tr.track_id]) > PRE_CRASH_FRAMES:
+                track_speed_history[tr.track_id].pop(0)
 
         # Draw tracks and collect cars
         car_tracks = []
@@ -283,10 +347,84 @@ if __name__ == "__main__":
                         # FLAG CRASH
                         x1_1, y1_1, x2_1, y2_1 = tr1.bbox.astype(int)
                         x1_2, y1_2, x2_2, y2_2 = tr2.bbox.astype(int)
+                        # Only if this pair is not already monitored
+                        existing_monitor = next((m for m in post_crash_monitor if set(m["tracks"]) == {tr1.track_id, tr2.track_id}), None)
+                        if existing_monitor is None:
+                            post_crash_monitor.append({
+                                "tracks": (tr1.track_id, tr2.track_id),
+                                "frame": tracker.frame_count,
+                                "frames_left": POST_CRASH_FRAMES,
+                                "pre_crash_speed_history": {
+                                    tr1.track_id: list(track_speed_history.get(tr1.track_id, [np.hypot(tr1.vx, tr1.vy)])),
+                                    tr2.track_id: list(track_speed_history.get(tr2.track_id, [np.hypot(tr2.vx, tr2.vy)]))
+                                },
+                                "post_crash_speed_history": {
+                                    tr1.track_id: [],
+                                    tr2.track_id: []
+                                },
+                                "vx_history": {tr1.track_id: [], tr2.track_id: []},
+                                "vy_history": {tr1.track_id: [], tr2.track_id: []},
+                                "ax_history": {tr1.track_id: [], tr2.track_id: []},
+                                "ay_history": {tr1.track_id: [], tr2.track_id: []},
+                                "crash_confirmed": False
+                            })
+
                         cv2.rectangle(frame, (x1_1, y1_1), (x2_1, y2_1), (0, 0, 255), 3)
                         cv2.rectangle(frame, (x1_2, y1_2), (x2_2, y2_2), (0, 0, 255), 3)
                         cv2.putText(frame, "!!! CRASH !!!", (min(x1_1, x1_2), max(y1_1, y1_2) - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
+        for monitor in post_crash_monitor:
+            if monitor["crash_confirmed"] or monitor["frames_left"] <= 0:
+                continue
+
+            for tid in monitor["tracks"]:
+                tr = next((t for t in tracker.tracks if t.track_id == tid), None)
+                if tr is None:
+                    continue
+
+                # Speed
+                speed = np.hypot(tr.vx, tr.vy)
+                monitor["post_crash_speed_history"][tid].append(speed)
+
+                # Velocity
+                monitor["vx_history"][tid].append(tr.vx)
+                monitor["vy_history"][tid].append(tr.vy)
+
+                # Acceleration (frame-to-frame)
+                if len(monitor["vx_history"][tid]) > 1:
+                    ax = tr.vx - monitor["vx_history"][tid][-2]
+                    ay = tr.vy - monitor["vy_history"][tid][-2]
+                else:
+                    ax = ay = 0
+                monitor["ax_history"][tid].append(ax)
+                monitor["ay_history"][tid].append(ay)
+
+            monitor["frames_left"] -= 1
+
+
+        for monitor in post_crash_monitor:
+            if monitor["crash_confirmed"] or monitor["frames_left"] > 0:
+                continue
+
+            decel_flags = []
+            for tid in monitor["tracks"]:
+                pre_speeds = monitor["pre_crash_speed_history"][tid]
+                post_speeds = monitor["post_crash_speed_history"][tid]
+                if len(post_speeds) == 0:
+                    continue
+
+                avg_pre = sum(pre_speeds) / len(pre_speeds)
+                avg_post = sum(post_speeds) / len(post_speeds)
+                if avg_pre > 0:
+                    percent_decel = (avg_pre - avg_post) / avg_pre * 100
+                else:
+                    percent_decel = 0
+
+                decel_flags.append(percent_decel >= DECEL_PERCENT_THRESHOLD)  # define this threshold, e.g., 20 for 20%
+
+            if any(decel_flags):
+                monitor["crash_confirmed"] = True
+                print(f"REAL CRASH confirmed: Tracks {monitor['tracks']} at frame {monitor['frame']} pre: {avg_pre} post: {avg_post} decel: {percent_decel}")
 
         cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
