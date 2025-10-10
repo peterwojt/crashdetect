@@ -1,3 +1,5 @@
+import os
+import csv
 import cv2
 import torch
 import time
@@ -228,8 +230,6 @@ def analyze_post_crash(tracker, verified_crashes, post_frames=5, decel_threshold
 
     return crash_results
 
-track_speed_history = {}
-post_crash_monitor = []       # monitor deceleration after crash
 PRE_CRASH_FRAMES = 5      # frames to average before crash
 POST_CRASH_FRAMES = 5     # frames to average after crash
 DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
@@ -237,9 +237,30 @@ DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 # -------------------------
 # Main loop
 # -------------------------
-if __name__ == "__main__":
+#if __name__ == "__main__":
+
+output_csv = "crashes_in_videos.csv"
+write_header = not os.path.exists(output_csv)
+fps = cap.get(cv2.CAP_PROP_FPS)
+
+if write_header:
+    with open(output_csv, mode="w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "video_file", "frame"
+        ])
+
+def run_on_video(filename):
+
+    track_speed_history = {}
+    post_crash_monitor = []       # monitor deceleration after crash
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
-    cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
+    #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
+    video_path = filename
+    if not os.path.isabs(video_path):  # if it's not a full path, prepend folder
+        video_path = os.path.join('crashes/2023-2024-2025', filename)
+
+    cap = cv2.VideoCapture(video_path)
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
@@ -424,7 +445,13 @@ if __name__ == "__main__":
 
             if any(decel_flags):
                 monitor["crash_confirmed"] = True
-                print(f"REAL CRASH confirmed: Tracks {monitor['tracks']} at frame {monitor['frame']} pre: {avg_pre} post: {avg_post} decel: {percent_decel}")
+                with open(output_csv, mode="a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        video_path,
+                        monitor['frame']
+                    ])
+                #print(f"REAL CRASH confirmed: Tracks {monitor['tracks']} at frame {monitor['frame']} pre: {avg_pre} post: {avg_post} decel: {percent_decel}")
 
         cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
@@ -435,3 +462,21 @@ if __name__ == "__main__":
 
     cap.release()
     cv2.destroyAllWindows()
+
+
+def process_all_videos(input_folder="crashes/2023-2024-2025", output_csv="crashes_in_videos.csv"):
+    for filename in os.listdir(input_folder):
+        if not filename.lower().endswith((".mp4", ".avi", ".mov", ".ts")):
+            continue
+
+        #print(f"\n▶️ Running on video: {filename}")
+        run_on_video(filename, output_csv)
+
+    print(f"\n✅ All videos processed. Crash info saved to {output_csv}")
+
+
+# -------------------------
+# Entry point
+# -------------------------
+if __name__ == "__main__":
+    process_all_videos()
