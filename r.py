@@ -241,7 +241,6 @@ DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 
 output_csv = "crashes_in_videos.csv"
 write_header = not os.path.exists(output_csv)
-fps = cap.get(cv2.CAP_PROP_FPS)
 
 if write_header:
     with open(output_csv, mode="w", newline="") as f:
@@ -258,7 +257,7 @@ def run_on_video(filename):
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
     video_path = filename
     if not os.path.isabs(video_path):  # if it's not a full path, prepend folder
-        video_path = os.path.join('crashes/2023-2024-2025', filename)
+        video_path = os.path.join('crashes/2023-2024-2025/', filename)
 
     cap = cv2.VideoCapture(video_path)
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
@@ -390,10 +389,10 @@ def run_on_video(filename):
                                 "crash_confirmed": False
                             })
 
-                        cv2.rectangle(frame, (x1_1, y1_1), (x2_1, y2_1), (0, 0, 255), 3)
-                        cv2.rectangle(frame, (x1_2, y1_2), (x2_2, y2_2), (0, 0, 255), 3)
-                        cv2.putText(frame, "!!! CRASH !!!", (min(x1_1, x1_2), max(y1_1, y1_2) - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
+                        #cv2.rectangle(frame, (x1_1, y1_1), (x2_1, y2_1), (0, 0, 255), 3)
+                        #cv2.rectangle(frame, (x1_2, y1_2), (x2_2, y2_2), (0, 0, 255), 3)
+                        #cv2.putText(frame, "!!! CRASH !!!", (min(x1_1, x1_2), max(y1_1, y1_2) - 10),
+                        #            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
         for monitor in post_crash_monitor:
             if monitor["crash_confirmed"] or monitor["frames_left"] <= 0:
                 continue
@@ -453,24 +452,24 @@ def run_on_video(filename):
                     ])
                 #print(f"REAL CRASH confirmed: Tracks {monitor['tracks']} at frame {monitor['frame']} pre: {avg_pre} post: {avg_post} decel: {percent_decel}")
 
-        cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        cv2.imshow("Predictive Crash Tracker", frame)
+        #cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        #cv2.imshow("Predictive Crash Tracker", frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        #if cv2.waitKey(1) & 0xFF == ord('q'):
+        #    break
 
     cap.release()
     cv2.destroyAllWindows()
 
 
-def process_all_videos(input_folder="crashes/2023-2024-2025", output_csv="crashes_in_videos.csv"):
+def process_all_videos(input_folder="crashes/2023-2024-2025/", output_csv="crashes_in_videos.csv"):
     for filename in os.listdir(input_folder):
         if not filename.lower().endswith((".mp4", ".avi", ".mov", ".ts")):
             continue
 
         #print(f"\n▶️ Running on video: {filename}")
-        run_on_video(filename, output_csv)
+        run_on_video(filename)
 
     print(f"\n✅ All videos processed. Crash info saved to {output_csv}")
 
