@@ -257,7 +257,7 @@ def run_on_video(filename):
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
     video_path = filename
     if not os.path.isabs(video_path):  # if it's not a full path, prepend folder
-        video_path = os.path.join('crashes/2023-2024-2025/', filename)
+        video_path = os.path.join('crashes/2025-2024-2023/', filename)
 
     cap = cv2.VideoCapture(video_path)
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
@@ -463,7 +463,7 @@ def run_on_video(filename):
     cv2.destroyAllWindows()
 
 
-def process_all_videos(input_folder="crashes/2023-2024-2025/", output_csv="crashes_in_videos.csv"):
+def process_all_videos(input_folder="crashes/2025-2024-2023/", output_csv="crashes_in_videos.csv"):
     for filename in os.listdir(input_folder):
         if not filename.lower().endswith((".mp4", ".avi", ".mov", ".ts")):
             continue
