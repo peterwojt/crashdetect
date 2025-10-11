@@ -246,7 +246,12 @@ if write_header:
     with open(output_csv, mode="w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "video_file", "frame"
+            "video_file", 
+            "frame",
+            "x1",
+            "y1",
+            "x2",
+            "y2"
         ])
 
 def run_on_video(filename):
@@ -266,7 +271,7 @@ def run_on_video(filename):
     #cap = cv2.VideoCapture('crashes/112_NE_2_-_W_2024-07-18_10_49_00_915.mp4')
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_N_2024-08-07_13_52_59_610.mp4')
     tracker = SimpleTracker(iou_threshold=0.1, max_age=15, min_hits=3, sticky_label=False)
-
+    frame_amount = 0
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -444,11 +449,37 @@ def run_on_video(filename):
 
             if any(decel_flags):
                 monitor["crash_confirmed"] = True
+
+
+                tr1_id, tr2_id = monitor["tracks"]
+                tr1 = next((t for t in tracker.tracks if t.track_id == tr1_id), None)
+                tr2 = next((t for t in tracker.tracks if t.track_id == tr2_id), None)
+                if tr1 is None or tr2 is None:
+                    continue
+
+                # Frame dimensions and padding
+                frame_height, frame_width = frame.shape[:2]
+                pad = 50
+
+                # Get each bounding box
+                x1_1, y1_1, x2_1, y2_1 = tr1.bbox.astype(int)
+                x1_2, y1_2, x2_2, y2_2 = tr2.bbox.astype(int)
+
+                # Compute combined box
+                comb_x1 = max(0, min(x1_1, x1_2) - pad)
+                comb_y1 = max(0, min(y1_1, y1_2) - pad)
+                comb_x2 = min(frame_width - 1, max(x2_1, x2_2) + pad)
+                comb_y2 = min(frame_height - 1, max(y2_1, y2_2) + pad)
+
                 with open(output_csv, mode="a", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
                         video_path,
-                        monitor['frame']
+                        monitor['frame'],
+                        comb_x1,
+                        comb_y1,
+                        comb_x2,
+                        comb_y2
                     ])
                 #print(f"REAL CRASH confirmed: Tracks {monitor['tracks']} at frame {monitor['frame']} pre: {avg_pre} post: {avg_post} decel: {percent_decel}")
 
@@ -458,12 +489,16 @@ def run_on_video(filename):
 
         #if cv2.waitKey(1) & 0xFF == ord('q'):
         #    break
+        frame_amount+=1
 
     cap.release()
     cv2.destroyAllWindows()
+    return frame_amount
 
 
 def process_all_videos(input_folder="crashes/2025-2024-2023/", output_csv="crashes_in_videos.csv"):
+    total_frames = 0
+    start_video_time = time.time()
     for filename in os.listdir(input_folder):
         if not filename.lower().endswith((".mp4", ".avi", ".mov", ".ts")):
             continue
@@ -471,6 +506,10 @@ def process_all_videos(input_folder="crashes/2025-2024-2023/", output_csv="crash
         #print(f"\n▶️ Running on video: {filename}")
         run_on_video(filename)
 
+        total_frames += frames
+    total_time = time.time() - start_video_time
+
+    print(f"   Total frames: {total_frames}")
     print(f"\n✅ All videos processed. Crash info saved to {output_csv}")
 
 
