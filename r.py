@@ -387,6 +387,8 @@ def run_on_video(filename):
                                     tr1.track_id: [],
                                     tr2.track_id: []
                                 },
+                                'bbox1': tr1.bbox.copy(),       # bbox of first car at detection
+                                'bbox2': tr2.bbox.copy(),       # bbox of second car at detection
                                 "vx_history": {tr1.track_id: [], tr2.track_id: []},
                                 "vy_history": {tr1.track_id: [], tr2.track_id: []},
                                 "ax_history": {tr1.track_id: [], tr2.track_id: []},
@@ -451,19 +453,14 @@ def run_on_video(filename):
                 monitor["crash_confirmed"] = True
 
 
-                tr1_id, tr2_id = monitor["tracks"]
-                tr1 = next((t for t in tracker.tracks if t.track_id == tr1_id), None)
-                tr2 = next((t for t in tracker.tracks if t.track_id == tr2_id), None)
-                if tr1 is None or tr2 is None:
-                    continue
+                
+                # Get saved detection bboxes
+                x1_1, y1_1, x2_1, y2_1 = monitor['bbox1'].astype(int)
+                x1_2, y1_2, x2_2, y2_2 = monitor['bbox2'].astype(int)
 
                 # Frame dimensions and padding
                 frame_height, frame_width = frame.shape[:2]
                 pad = 50
-
-                # Get each bounding box
-                x1_1, y1_1, x2_1, y2_1 = tr1.bbox.astype(int)
-                x1_2, y1_2, x2_2, y2_2 = tr2.bbox.astype(int)
 
                 # Compute combined box
                 comb_x1 = max(0, min(x1_1, x1_2) - pad)
@@ -504,7 +501,7 @@ def process_all_videos(input_folder="crashes/2025-2024-2023/", output_csv="crash
             continue
 
         #print(f"\n▶️ Running on video: {filename}")
-        run_on_video(filename)
+        frames = run_on_video(filename)
 
         total_frames += frames
     total_time = time.time() - start_video_time
