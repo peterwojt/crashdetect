@@ -1,6 +1,7 @@
 import os
 import csv
 import cv2
+import numpy as np
 
 def save_crash_clips(csv_file="crashes_in_videos.csv", 
                      output_folder="cropped_crash_videos2", 
@@ -31,32 +32,42 @@ def save_crash_clips(csv_file="crashes_in_videos.csv",
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS)
 
-            start_f = max(0, crash_frame - pre_frames)
-            end_f = min(total_frames - 1, crash_frame + post_frames)
+            start_f = crash_frame - pre_frames
+            end_f = crash_frame + post_frames
+            desired_frames = end_f - start_f + 1  # should be 16
 
             width = x2 - x1
             height = y2 - y1
-
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
             for f in range(start_f, end_f + 1):
+                if f < 0 or f >= total_frames:
+                    # out of bounds → pad with black frame
+                    black = np.zeros((height, width, 3), dtype=np.uint8)
+                    out.write(black)
+                    continue
+
                 cap.set(cv2.CAP_PROP_POS_FRAMES, f)
                 ret, frame = cap.read()
                 if not ret:
-                    break
+                    # failed read → also pad
+                    black = np.zeros((height, width, 3), dtype=np.uint8)
+                    out.write(black)
+                    continue
 
                 crop = frame[y1:y2, x1:x2]
                 if crop.size == 0:
-                    continue
+                    crop = np.zeros((height, width, 3), dtype=np.uint8)
                 out.write(crop)
 
             out.release()
             cap.release()
 
-            print(f"✅ Saved {out_path} ({end_f - start_f + 1} frames)")
+            print(f"✅ Saved {out_path} ({desired_frames} frames padded to 16)")
 
     print(f"\n📁 All cropped crash videos saved in: {output_folder}")
+
 
 if __name__ == "__main__":
     save_crash_clips("crashes_in_videos.csv")
