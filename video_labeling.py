@@ -7,7 +7,7 @@ def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower()
             for text in re.split(r'(\d+)', s)]
 
-video_folder = 'videos'  # Replace with your folder path
+video_folder = 'cropped_crash_videos'  # Replace with your folder path
 video_files = [f for f in os.listdir(video_folder) if f.endswith(('.mp4', '.avi', '.mov'))]
 video_files.sort(key=natural_sort_key)
 current_index = 0
@@ -18,8 +18,8 @@ def save_label(filename, label):
     rows = []
 
     # Read existing labels, skip header
-    if os.path.exists('labels.csv'):
-        with open('labels.csv', 'r', newline='') as csvfile:
+    if os.path.exists('labels2.csv'):
+        with open('labels2.csv', 'r', newline='') as csvfile:
             reader = csv.reader(csvfile)
             header = next(reader, None)
             for row in reader:
@@ -30,7 +30,7 @@ def save_label(filename, label):
     labels[clean_filename] = label
 
     # Write all labels back, no repeats, header only once
-    with open('labels.csv', 'w', newline='') as csvfile:
+    with open('labels2.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['filename', 'label'])
         for fname, lbl in labels.items():
@@ -38,8 +38,8 @@ def save_label(filename, label):
 
 def get_label_for_file(filename):
     clean_filename = filename.replace(' ', '')
-    if os.path.exists('labels.csv'):
-        with open('labels.csv', 'r', newline='') as csvfile:
+    if os.path.exists('labels2.csv'):
+        with open('labels2.csv', 'r', newline='') as csvfile:
             reader = csv.reader(csvfile)
             next(reader, None)  # skip header
             for row in reader:
@@ -138,8 +138,8 @@ def play_video(video_path, index):
 # Helper to get set of labeled filenames (without spaces)
 def get_labeled_files():
     labeled = set()
-    if os.path.exists('labels.csv'):
-        with open('labels.csv', 'r', newline='') as csvfile:
+    if os.path.exists('labels2.csv'):
+        with open('labels2.csv', 'r', newline='') as csvfile:
             reader = csv.reader(csvfile)
             next(reader, None)  # skip header
             for row in reader:
