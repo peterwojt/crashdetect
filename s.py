@@ -3,7 +3,7 @@ import csv
 import cv2
 
 def save_crash_clips(csv_file="crashes_in_videos.csv", 
-                     output_folder="cropped_crash_videos", 
+                     output_folder="cropped_crash_videos2", 
                      pre_frames=7, post_frames=8):
     os.makedirs(output_folder, exist_ok=True)
 
