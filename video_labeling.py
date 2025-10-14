@@ -7,7 +7,7 @@ def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower()
             for text in re.split(r'(\d+)', s)]
 
-video_folder = 'cropped_crash_videos'  # Replace with your folder path
+video_folder = 'cropped_crash_videos2'  # Replace with your folder path
 video_files = [f for f in os.listdir(video_folder) if f.endswith(('.mp4', '.avi', '.mov'))]
 video_files.sort(key=natural_sort_key)
 current_index = 0

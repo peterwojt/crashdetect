@@ -5,7 +5,7 @@ count_d = 0
 count_z = 0
 count_n = 0
 
-with open("labels.csv", newline='') as infile:
+with open("labels2.csv", newline='') as infile:
     reader = csv.reader(infile)
     header = next(reader)
 

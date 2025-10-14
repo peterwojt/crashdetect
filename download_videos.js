@@ -1,58 +1,158 @@
 const https = require('https');
 const fs = require('fs');
-const url = 'https://trafficcams.bellevuewa.gov/traffic-edge/CCTV074L.stream/playlist.m3u8';
+const path = require('path');
 
-https.get(url, (response) => {
-    let data = '';
-    response.on('data', (chunk) => {
-	data+=chunk;
-    });
-    response.on('end' , () => {
-	const search_for_m3u8 = /.*\.m3u8/g;
-	const chunklist_Url = data.match(search_for_m3u8);
+const MASTER_URL = 'https://trafficcams.bellevuewa.gov/traffic-edge/CCTV072L.stream/playlist.m3u8';
+const BASE_URL = 'https://trafficcams.bellevuewa.gov/traffic-edge/CCTV072L.stream/';
+const OUTPUT_DIR = 'traffic_cam_videos/upload';
+const PROCESSED_DIR = 'traffic_cam_videos/processed';
+const LOG_FILE = 'traffic_cam_videos/download_log.csv';
+const CHECK_INTERVAL_MS = 4000; // 4 seconds
 
-	if (chunklist_Url) {
-	    console.log(chunklist_Url);
-	    get_chunklist_ts_files(chunklist_Url);
-	} else {
-	    console.log('No m3u8 files detected');
-	}
-    });
-});
+// Ensure directories exist
+if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true });
 
-function get_chunklist_ts_files(url2) {
-    const url3 = `https://trafficcams.bellevuewa.gov/traffic-edge/CCTV074L.stream/${url2}`;
-    https.get(url3, (response) => {
-	let data = '';
-	response.on('data', (chunk) => {
-	    data+=chunk;
-	});
+// Create CSV log file with header if not present
+if (!fs.existsSync(LOG_FILE)) {
+    fs.writeFileSync(LOG_FILE, 'filename,timestamp\n', 'utf8');
+}
 
-	response.on('end', () => {
-	    const tsFileRegex = /.*\.ts/g;
-	    const tsFileUrls = data.match(tsFileRegex);
+// Keep track of last 4 digits for already downloaded files
+let downloadedSuffixes = new Set(
+    fs.readdirSync(PROCESSED_DIR)
+        .filter(f => f.endsWith('.ts'))
+        .map(f => f.match(/(\d{4})\.ts$/)?.[1])
+        .filter(Boolean)
+);
 
-	    if (tsFileUrls) {
-		download_ts_files(tsFileUrls[0]);
-	    } else {
-		console.log('Error parsing playlist.m3u8');
-	    }
-	});
+async function mainLoop() {
+    try {
+        const chunklistName = await fetchChunklistName(MASTER_URL);
+        if (!chunklistName) return console.log('No chunklist found.');
+
+        const chunklistUrl = BASE_URL + chunklistName;
+        const tsFiles = await fetchTsFiles(chunklistUrl);
+
+        if (tsFiles.length === 0) {
+            console.log('No TS files found in chunklist.');
+            return;
+        }
+
+        for (const tsFile of tsFiles) {
+            const suffixMatch = tsFile.match(/(\d{4})\.ts$/);
+            const suffix = suffixMatch ? suffixMatch[1] : null;
+
+            if (!suffix || downloadedSuffixes.has(suffix)) continue;
+
+            await downloadTsFile(BASE_URL + tsFile, tsFile, suffix);
+            downloadedSuffixes.add(suffix);
+        }
+
+        cleanupUnprocessedFiles();
+    } catch (err) {
+        console.error('Error in loop:', err.message);
+    } finally {
+        setTimeout(mainLoop, CHECK_INTERVAL_MS);
+    }
+}
+
+function fetchChunklistName(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, res => {
+            let data = '';
+            res.on('data', chunk => (data += chunk));
+            res.on('end', () => {
+                const match = data.match(/chunklist.*\.m3u8/g);
+                resolve(match ? match[0] : null);
+            });
+        }).on('error', reject);
     });
 }
 
-function download_ts_files(url4){
-    const url5 = `https://trafficcams.bellevuewa.gov/traffic-edge/CCTV074L.stream/${url4}`;
-    const file = fs.createWriteStream('traffic_cam_videos/traffic_cam.ts');
-    https.get(url5, (response) => {
-	response.pipe(file);
-
-	file.on('finish', () => {
-	    file.close();
-	    console.log('Download complete');
-	});
-    }).on('error', (err) => {
-	fs.unlink('traffic_cam_videos/traffic_cam.ts');
-	console.error('Download failed:', err.message);
+function fetchTsFiles(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, res => {
+            let data = '';
+            res.on('data', chunk => (data += chunk));
+            res.on('end', () => {
+                const matches = data.match(/.*\.ts/g);
+                resolve(matches || []);
+            });
+        }).on('error', reject);
     });
 }
+
+function downloadTsFile(url, filename, suffix) {
+    return new Promise((resolve, reject) => {
+        const filepath = path.join(OUTPUT_DIR, filename);
+        const processedPath = path.join(PROCESSED_DIR, filename);
+        const file = fs.createWriteStream(filepath);
+
+        https.get(url, response => {
+            response.pipe(file);
+
+            file.on('finish', () => {
+                file.close(() => {
+                    console.log(`✅ Downloaded ${filename}`);
+
+                    // Move file to processed folder
+                    fs.rename(filepath, processedPath, err => {
+                        if (err) {
+                            console.error(`⚠️  Could not move ${filename}:`, err.message);
+                        } else {
+                            console.log(`📦 Moved ${filename} → processed/`);
+                            logDownload(filename);
+                        }
+                        resolve();
+                    });
+                });
+            });
+        }).on('error', err => {
+            fs.unlink(filepath, () => {});
+            console.error(`❌ Failed ${filename}:`, err.message);
+            reject(err);
+        });
+    });
+}
+
+function logDownload(filename) {
+    const timestamp = new Date().toISOString();
+    const line = `${filename},${timestamp}\n`;
+    fs.appendFile(LOG_FILE, line, err => {
+        if (err) console.error(`⚠️  Failed to write log for ${filename}:`, err.message);
+        else console.log(`🕓 Logged ${filename} at ${timestamp}`);
+    });
+}
+
+
+function cleanupUnprocessedFiles() {
+    const items = fs.readdirSync(OUTPUT_DIR);
+    for (const item of items) {
+        const fullPath = path.join(OUTPUT_DIR, item);
+
+        // Skip folders
+        if (fs.statSync(fullPath).isDirectory()) {
+            // skip crash folder entirely
+            if (item.toLowerCase() === 'crash') continue;
+            else continue; // don't delete subdirs either
+        }
+
+        if (item.endsWith('.ts')) {
+            const processedPath = path.join(PROCESSED_DIR, item);
+            const existsInProcessed = fs.existsSync(processedPath);
+
+            if (!existsInProcessed) {
+                try {
+                    fs.unlinkSync(fullPath);
+                    console.log(`🧹 Deleted leftover file: ${item}`);
+                } catch (err) {
+                    console.error(`⚠️  Failed to delete ${item}:`, err.message);
+                }
+            }
+        }
+    }
+}
+
+// Start loop
+mainLoop();

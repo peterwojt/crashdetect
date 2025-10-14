@@ -1,9 +1,10 @@
-import os
-import csv
 import cv2
 import torch
 import time
+import os
+import csv
 import numpy as np
+from pathlib import Path
 from torchvision import transforms
 from scipy.optimize import linear_sum_assignment
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
@@ -230,6 +231,8 @@ def analyze_post_crash(tracker, verified_crashes, post_frames=5, decel_threshold
 
     return crash_results
 
+track_speed_history = {}
+post_crash_monitor = []       # monitor deceleration after crash
 PRE_CRASH_FRAMES = 5      # frames to average before crash
 POST_CRASH_FRAMES = 5     # frames to average after crash
 DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
@@ -237,9 +240,8 @@ DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 # -------------------------
 # Main loop
 # -------------------------
-#if __name__ == "__main__":
 
-output_csv = "crashes_in_videos.csv"
+output_csv = "traffic_cam_videos/crash_log.csv"
 write_header = not os.path.exists(output_csv)
 
 if write_header:
@@ -254,31 +256,51 @@ if write_header:
             "y2"
         ])
 
-def run_on_video(filename):
 
-    track_speed_history = {}
-    post_crash_monitor = []       # monitor deceleration after crash
+roi_corners = np.array([[152, 101], [491, 99], [635, 187],[635,355],[145, 355]], dtype=np.int32)
+
+def process_chunk(filename):
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
-    video_path = filename
-    if not os.path.isabs(video_path):  # if it's not a full path, prepend folder
-        video_path = os.path.join('crashes/2025-2024-2023/', filename)
-
-    cap = cv2.VideoCapture(video_path)
+    #cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
+    full_path = os.path.join('traffic_cam_videos/processed', filename)
+    cap = cv2.VideoCapture(full_path)
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
     #cap = cv2.VideoCapture('crashes/112_NE_2_-_W_2024-07-18_10_49_00_915.mp4')
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_N_2024-08-07_13_52_59_610.mp4')
     tracker = SimpleTracker(iou_threshold=0.1, max_age=15, min_hits=3, sticky_label=False)
-    frame_amount = 0
+    
+    crash_confirmed = False
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
         start_time = time.time()
+        # Create a mask of zeros (black)
+        frame_height, frame_width = frame.shape[:2]
+        mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
+
+        # Fill the polygon area with 1 (white)
+        cv2.fillPoly(mask, [roi_corners], 1)
+
+        # Apply mask: black outside, original color inside
+
+        #cv2.imshow("normal", frame)
+        #masked_frame = cv2.bitwise_and(frame, frame, mask=mask)
+
+        #cv2.imshow("masked", masked_frame)
+
+
+        frame = cv2.bitwise_and(frame, frame, mask=mask)
+        x, y, w, h = cv2.boundingRect(roi_corners)  # rectangle that tightly encloses polygon
+        frame = frame[y:y+h, x:x+w]
+
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
         image_tensor = transform(image).to(device)
 
         with torch.no_grad():
@@ -294,6 +316,7 @@ def run_on_video(filename):
         
         MIN_BOX_AREA = 2000 
 
+        MAX_BOX_AREA = 10000  # ignore overly large boxes (likely false detections)
         detections = []
         for box, score, label in zip(boxes, scores, labels):
             if score < DETECTION_THRESHOLD:
@@ -301,6 +324,8 @@ def run_on_video(filename):
             x1, y1, x2, y2 = box.astype(int)
             area = (x2 - x1) * (y2 - y1)
             if area < MIN_BOX_AREA:
+                continue  # ignore small detections
+            if area > MAX_BOX_AREA:
                 continue  # ignore small detections
             detections.append([x1, y1, x2, y2, float(score), int(label)])
 
@@ -325,9 +350,9 @@ def run_on_video(filename):
             
             if class_name.lower() in {"car", "truck" ,"motorcycle","bus"}:
                 car_tracks.append(tr)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                #cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                #cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
+                #cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         # --- Crash detection using future positions ---
         for i in range(len(car_tracks)):
             for j in range(i + 1, len(car_tracks)):
@@ -387,8 +412,6 @@ def run_on_video(filename):
                                     tr1.track_id: [],
                                     tr2.track_id: []
                                 },
-                                'bbox1': tr1.bbox.copy(),       # bbox of first car at detection
-                                'bbox2': tr2.bbox.copy(),       # bbox of second car at detection
                                 "vx_history": {tr1.track_id: [], tr2.track_id: []},
                                 "vy_history": {tr1.track_id: [], tr2.track_id: []},
                                 "ax_history": {tr1.track_id: [], tr2.track_id: []},
@@ -451,9 +474,8 @@ def run_on_video(filename):
 
             if any(decel_flags):
                 monitor["crash_confirmed"] = True
+                crash_confirmed = True
 
-
-                
                 # Get saved detection bboxes
                 x1_1, y1_1, x2_1, y2_1 = monitor['bbox1'].astype(int)
                 x1_2, y1_2, x2_2, y2_2 = monitor['bbox2'].astype(int)
@@ -482,36 +504,37 @@ def run_on_video(filename):
 
         #cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
         #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        #cv2.imshow("Predictive Crash Tracker", frame)
 
+        #cv2.imshow("Predictive Crash Tracker", frame)
+        
         #if cv2.waitKey(1) & 0xFF == ord('q'):
         #    break
-        frame_amount+=1
 
     cap.release()
     cv2.destroyAllWindows()
-    return frame_amount
 
+    if crash_confirmed:
+        crash_path = os.path.join('traffic_cam_videos/crash', filename)
+        source = Path(full_path)
+        destination = Path(crash_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(destination)
+    else:
+        if os.path.exists(full_path):
+            os.remove(full_path)
 
-def process_all_videos(input_folder="crashes/2025-2024-2023/", output_csv="crashes_in_videos.csv"):
-    total_frames = 0
-    start_video_time = time.time()
-    for filename in os.listdir(input_folder):
-        if not filename.lower().endswith((".mp4", ".avi", ".mov", ".ts")):
-            continue
+PROCESSED_FOLDER = Path("traffic_cam_videos/processed")
+CHECK_INTERVAL = 5 
 
-        #print(f"\n▶️ Running on video: {filename}")
-        frames = run_on_video(filename)
+def worker_loop():
+    while True:
+        files = [f for f in PROCESSED_FOLDER.iterdir() if f.is_file()]
+        
+        if files:
+            for file_path in files:
+                process_chunk(file_path.name)
+        else:
+            time.sleep(CHECK_INTERVAL)
 
-        total_frames += frames
-    total_time = time.time() - start_video_time
-
-    print(f"   Total frames: {total_frames}")
-    print(f"\n✅ All videos processed. Crash info saved to {output_csv}")
-
-
-# -------------------------
-# Entry point
-# -------------------------
 if __name__ == "__main__":
-    process_all_videos()
+    worker_loop()

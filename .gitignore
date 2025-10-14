@@ -5,6 +5,7 @@ car_crash_video_dataset/
 crash_clips_to_train/
 car_crash_video_dataset2/
 cropped_crash_videos/
+cropped_crash_videos2/
 crash_clips/
 yolo_model/
 crash_no_crash_dataset/
@@ -16,8 +17,10 @@ example_images/
 crashes/
 videos/
 latent_data/
+best_s3d_flow.pth
 models/
 optical_flow_dataset/
+optical_flow_dataset2/
 latent_data2/
 flow_logistic_data/
 r3d18_best.pth

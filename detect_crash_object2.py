@@ -237,10 +237,15 @@ DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 # -------------------------
 # Main loop
 # -------------------------
+
+
+roi_corners = np.array([[152, 101], [491, 99], [635, 187],[635,355],[145, 355]], dtype=np.int32)
+
 if __name__ == "__main__":
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
-    cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
-    cap = cv2.VideoCapture('../../Downloads/media_w465876639_4251.ts')
+    #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
+    cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
+    cap = cv2.VideoCapture('traffic_cam_videos/processed/media_w1396001818_6561.ts')
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
@@ -254,7 +259,27 @@ if __name__ == "__main__":
             break
 
         start_time = time.time()
+        # Create a mask of zeros (black)
+        frame_height, frame_width = frame.shape[:2]
+        mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
+
+        # Fill the polygon area with 1 (white)
+        cv2.fillPoly(mask, [roi_corners], 1)
+
+        # Apply mask: black outside, original color inside
+
+        #cv2.imshow("normal", frame)
+        #masked_frame = cv2.bitwise_and(frame, frame, mask=mask)
+
+        #cv2.imshow("masked", masked_frame)
+
+
+        frame = cv2.bitwise_and(frame, frame, mask=mask)
+        x, y, w, h = cv2.boundingRect(roi_corners)  # rectangle that tightly encloses polygon
+        frame = frame[y:y+h, x:x+w]
+
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
         image_tensor = transform(image).to(device)
 
         with torch.no_grad():
@@ -270,6 +295,7 @@ if __name__ == "__main__":
         
         MIN_BOX_AREA = 2000 
 
+        MAX_BOX_AREA = 10000  # ignore overly large boxes (likely false detections)
         detections = []
         for box, score, label in zip(boxes, scores, labels):
             if score < DETECTION_THRESHOLD:
@@ -277,6 +303,8 @@ if __name__ == "__main__":
             x1, y1, x2, y2 = box.astype(int)
             area = (x2 - x1) * (y2 - y1)
             if area < MIN_BOX_AREA:
+                continue  # ignore small detections
+            if area > MAX_BOX_AREA:
                 continue  # ignore small detections
             detections.append([x1, y1, x2, y2, float(score), int(label)])
 
@@ -299,7 +327,7 @@ if __name__ == "__main__":
             class_name = COCO_INSTANCE_CATEGORY_NAMES[label_idx] if 0 <= label_idx < len(COCO_INSTANCE_CATEGORY_NAMES) else "N/A"
             color = (0, 255, 0)
             
-            if class_name.lower() in {"car","boat","plane" , "truck" ,"motorcycle","train","bus"}:
+            if class_name.lower() in {"car", "truck" ,"motorcycle","bus"}:
                 car_tracks.append(tr)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
@@ -429,8 +457,9 @@ if __name__ == "__main__":
 
         cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        cv2.imshow("Predictive Crash Tracker", frame)
 
+        cv2.imshow("Predictive Crash Tracker", frame)
+        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
