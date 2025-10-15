@@ -496,7 +496,7 @@ def process_chunk(filename):
                 with open(output_csv, mode="a", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
-                        video_path,
+                        filename,
                         monitor['frame'],
                         comb_x1,
                         comb_y1,
