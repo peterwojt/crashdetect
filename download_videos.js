@@ -9,6 +9,8 @@ const PROCESSED_DIR = 'traffic_cam_videos/processed';
 const LOG_FILE = 'traffic_cam_videos/download_log.csv';
 const CHECK_INTERVAL_MS = 4000; // 4 seconds
 
+const STOP_TIME = new Date('2025-10-21T03:00:00Z');
+
 // Ensure directories exist
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true });
@@ -28,6 +30,10 @@ let downloadedSuffixes = new Set(
 
 async function mainLoop() {
     try {
+        if (new Date() >= STOP_TIME) {
+            console.log(`Stop time reached (${STOP_TIME.toISOString()}). Exiting loop.`);
+            return;
+        }
         const chunklistName = await fetchChunklistName(MASTER_URL);
         if (!chunklistName) return console.log('No chunklist found.');
 

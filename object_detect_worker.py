@@ -7,6 +7,7 @@ import numpy as np
 from pathlib import Path
 from torchvision import transforms
 from scipy.optimize import linear_sum_assignment
+from datetime import datetime
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
 
 # -------------------------
@@ -525,9 +526,14 @@ def process_chunk(filename):
 
 PROCESSED_FOLDER = Path("traffic_cam_videos/processed")
 CHECK_INTERVAL = 5 
+STOP_TIME = datetime(2025, 10, 21, 3, 0, 0)  # <-- change this to your cutoff (year, month, day, hour, minute, second)
 
 def worker_loop():
     while True:
+        if datetime.now() >= STOP_TIME:
+            print(f"Stop time reached ({STOP_TIME}), exiting worker loop.")
+            break
+
         files = [f for f in PROCESSED_FOLDER.iterdir() if f.is_file()]
         
         if files:
