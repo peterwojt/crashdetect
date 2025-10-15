@@ -391,6 +391,8 @@ if __name__ == "__main__":
                                     tr1.track_id: [],
                                     tr2.track_id: []
                                 },
+                                'bbox1': tr1.bbox.copy(),       # bbox of first car at detection
+                                'bbox2': tr2.bbox.copy(),       # bbox of second car at detection
                                 "vx_history": {tr1.track_id: [], tr2.track_id: []},
                                 "vy_history": {tr1.track_id: [], tr2.track_id: []},
                                 "ax_history": {tr1.track_id: [], tr2.track_id: []},
