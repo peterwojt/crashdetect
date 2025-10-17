@@ -473,7 +473,8 @@ def process_chunk(filename):
                 else:
                     percent_decel = 0
 
-                decel_flags.append(percent_decel >= DECEL_PERCENT_THRESHOLD)  # define this threshold, e.g., 20 for 20%
+                if percent_decel > DECEL_PERCENT_THRESHOLD:
+                    decel_flags.append(True)
 
             if any(decel_flags):
                 monitor["crash_confirmed"] = True

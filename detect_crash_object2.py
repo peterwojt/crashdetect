@@ -244,8 +244,8 @@ roi_corners = np.array([[152, 101], [491, 99], [635, 187],[635,355],[145, 355]],
 if __name__ == "__main__":
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
-    cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
-    cap = cv2.VideoCapture('traffic_cam_videos/processed/media_w1396001818_6561.ts')
+    #cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
+    cap = cv2.VideoCapture('traffic_cam_videos/crash/media_w1455848486_7065.ts')
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
@@ -326,7 +326,9 @@ if __name__ == "__main__":
             label_idx = tr.get_label(sticky=tracker.sticky_label)
             class_name = COCO_INSTANCE_CATEGORY_NAMES[label_idx] if 0 <= label_idx < len(COCO_INSTANCE_CATEGORY_NAMES) else "N/A"
             color = (0, 255, 0)
-            
+
+            #if tr.hits < tracker.min_hits or tr.time_since_update > 1:
+            #   continue
             if class_name.lower() in {"car", "truck" ,"motorcycle","bus"}:
                 car_tracks.append(tr)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -337,6 +339,12 @@ if __name__ == "__main__":
             for j in range(i + 1, len(car_tracks)):
                 tr1 = car_tracks[i]
                 tr2 = car_tracks[j]
+
+                if tr1.hits < tracker.min_hits or tr1.time_since_update > 1:
+                    continue
+
+                if tr2.hits < tracker.min_hits or tr2.time_since_update > 1:
+                    continue
 
                 # IMPORTANT: and means both have to be moving, or means only one
                 if not (is_moving(tr1) or is_moving(tr2)):
@@ -451,7 +459,8 @@ if __name__ == "__main__":
                 else:
                     percent_decel = 0
 
-                decel_flags.append(percent_decel >= DECEL_PERCENT_THRESHOLD)  # define this threshold, e.g., 20 for 20%
+                if percent_decel > DECEL_PERCENT_THRESHOLD:
+                    decel_flags.append(True)
 
             if any(decel_flags):
                 monitor["crash_confirmed"] = True

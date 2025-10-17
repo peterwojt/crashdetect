@@ -32,3 +32,7 @@ videos.tar.xz
 r3d18_best1.pth
 r2plus1d18_best1.pth
 r18_gru_best1.pth
+nohup.out
+cropped_crash_videos.tar.xz
+cropped_crash_videos2.tar.xz
+traffic_cam_videos/
