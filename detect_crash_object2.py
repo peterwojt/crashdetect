@@ -4,14 +4,15 @@ import time
 import numpy as np
 from torchvision import transforms
 from scipy.optimize import linear_sum_assignment
-from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+#from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
 
 # -------------------------
 # SETUP
 # -------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval().to(device)
-
+#model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval().to(device)
+model = fasterrcnn_resnet50_fpn_v2(pretrained=True).eval().to(device)
 COCO_INSTANCE_CATEGORY_NAMES = [
     '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
     'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
@@ -245,7 +246,7 @@ if __name__ == "__main__":
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
     #cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
-    cap = cv2.VideoCapture('traffic_cam_videos/crash/media_w1455848486_7065.ts')
+    cap = cv2.VideoCapture('traffic_cam_videos/crash/media_w1387808508_2823.ts')
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
