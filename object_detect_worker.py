@@ -9,12 +9,14 @@ from torchvision import transforms
 from scipy.optimize import linear_sum_assignment
 from datetime import datetime
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+#from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
 
 # -------------------------
 # SETUP
 # -------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval().to(device)
+#model = fasterrcnn_resnet50_fpn_v2(pretrained=True).eval().to(device)
 
 COCO_INSTANCE_CATEGORY_NAMES = [
     '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
@@ -242,7 +244,7 @@ DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 # Main loop
 # -------------------------
 
-output_csv = "traffic_cam_videos/crash_log.csv"
+output_csv = "traffic_cam_videos3/crash_log.csv"
 write_header = not os.path.exists(output_csv)
 
 if write_header:
@@ -264,7 +266,7 @@ def process_chunk(filename):
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
     #cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
-    full_path = os.path.join('traffic_cam_videos/processed', filename)
+    full_path = os.path.join('traffic_cam_videos3/processed', filename)
     cap = cv2.VideoCapture(full_path)
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
@@ -518,7 +520,7 @@ def process_chunk(filename):
     cv2.destroyAllWindows()
 
     if crash_confirmed:
-        crash_path = os.path.join('traffic_cam_videos/crash', filename)
+        crash_path = os.path.join('traffic_cam_videos3/crash', filename)
         source = Path(full_path)
         destination = Path(crash_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -527,15 +529,15 @@ def process_chunk(filename):
         if os.path.exists(full_path):
             os.remove(full_path)
 
-PROCESSED_FOLDER = Path("traffic_cam_videos/processed")
+PROCESSED_FOLDER = Path("traffic_cam_videos3/processed")
 CHECK_INTERVAL = 5 
 STOP_TIME = datetime(2025, 10, 21, 3, 0, 0)  # <-- change this to your cutoff (year, month, day, hour, minute, second)
 
 def worker_loop():
     while True:
-        if datetime.now() >= STOP_TIME:
-            print(f"Stop time reached ({STOP_TIME}), exiting worker loop.")
-            break
+        #if datetime.now() >= STOP_TIME:
+        #    print(f"Stop time reached ({STOP_TIME}), exiting worker loop.")
+        #    break
 
         files = [f for f in PROCESSED_FOLDER.iterdir() if f.is_file()]
         

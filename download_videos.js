@@ -4,12 +4,12 @@ const path = require('path');
 
 const MASTER_URL = 'https://trafficcams.bellevuewa.gov/traffic-edge/CCTV072L.stream/playlist.m3u8';
 const BASE_URL = 'https://trafficcams.bellevuewa.gov/traffic-edge/CCTV072L.stream/';
-const OUTPUT_DIR = 'traffic_cam_videos/upload';
-const PROCESSED_DIR = 'traffic_cam_videos/processed';
-const LOG_FILE = 'traffic_cam_videos/download_log.csv';
+const OUTPUT_DIR = 'traffic_cam_videos3/upload';
+const PROCESSED_DIR = 'traffic_cam_videos3/processed';
+const LOG_FILE = 'traffic_cam_videos3/download_log.csv';
 const CHECK_INTERVAL_MS = 4000; // 4 seconds
 
-const STOP_TIME = new Date('2025-10-21T03:00:00Z');
+const STOP_TIME = new Date('2026-10-21T03:00:00Z');
 
 // Ensure directories exist
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
