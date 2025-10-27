@@ -4,15 +4,15 @@ import time
 import numpy as np
 from torchvision import transforms
 from scipy.optimize import linear_sum_assignment
-#from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
-from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
+from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+#from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2
 
 # -------------------------
 # SETUP
 # -------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval().to(device)
-model = fasterrcnn_resnet50_fpn_v2(pretrained=True).eval().to(device)
+model = fasterrcnn_mobilenet_v3_large_fpn(pretrained=True).eval().to(device)
+#model = fasterrcnn_resnet50_fpn_v2(pretrained=True).eval().to(device)
 COCO_INSTANCE_CATEGORY_NAMES = [
     '__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
     'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
@@ -242,19 +242,29 @@ DECEL_PERCENT_THRESHOLD = 30        # speed drop threshold to confirm crash
 
 roi_corners = np.array([[152, 101], [491, 99], [635, 187],[635,355],[145, 355]], dtype=np.int32)
 
+def box_inside_polygon(box, polygon):
+    x1, y1, x2, y2 = box
+    # Compute the center of the box
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+    # cv2.pointPolygonTest returns >0 if point is inside
+    return cv2.pointPolygonTest(polygon, (cx, cy), False) >= 0
+
+
 if __name__ == "__main__":
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_E_2024-08-07_13_52_59_610.mp4')
     #cap = cv2.VideoCapture('crashes/Bel-Way_NE_2_-_S_2024-09-30_20_46_57_395.mp4')
     #cap = cv2.VideoCapture('../../Downloads/media_w720815558_5615.ts')
-    cap = cv2.VideoCapture('traffic_cam_videos/crash/media_w1387808508_2823.ts')
+    cap = cv2.VideoCapture('traffic_cam_videos3/crash/media_w89574655_5759.ts')
     #cap = cv2.VideoCapture('crashes/110_NE_4_-_Center_2024-04-18_20_18_19_042.mp4')
     #cap = cv2.VideoCapture('media_w1117040928_7.ts')
     #cap = cv2.VideoCapture('crashes/Lk_Hills_Conn_SE_7-8-_-_W_2024-03-28_15_05_49_904.mp4')
     #cap = cv2.VideoCapture('crashes/112_NE_2_-_W_2024-07-18_10_49_00_915.mp4')
     #cap = cv2.VideoCapture('crashes/156_NE_8_-_N_2024-08-07_13_52_59_610.mp4')
     tracker = SimpleTracker(iou_threshold=0.1, max_age=15, min_hits=3, sticky_label=False)
-
+    num = 0
     while True:
+        num+=1
         ret, frame = cap.read()
         if not ret:
             break
@@ -262,6 +272,7 @@ if __name__ == "__main__":
         start_time = time.time()
         # Create a mask of zeros (black)
         frame_height, frame_width = frame.shape[:2]
+
         mask = np.zeros((frame_height, frame_width), dtype=np.uint8)
 
         # Fill the polygon area with 1 (white)
@@ -276,6 +287,7 @@ if __name__ == "__main__":
 
 
         frame = cv2.bitwise_and(frame, frame, mask=mask)
+        
         x, y, w, h = cv2.boundingRect(roi_corners)  # rectangle that tightly encloses polygon
         frame = frame[y:y+h, x:x+w]
 
@@ -298,6 +310,32 @@ if __name__ == "__main__":
 
         MAX_BOX_AREA = 10000  # ignore overly large boxes (likely false detections)
         detections = []
+
+        # Scale polygon coordinates to the cropped frame
+        scaled_roi_corners = roi_corners.copy()
+        scaled_roi_corners[:, 0] -= x  # shift x
+        scaled_roi_corners[:, 1] -= y  # shift y
+
+        # Scale factor
+        scale_factor = 0.8
+
+        # Center of the polygon (for scaling)
+        center_x = np.mean(scaled_roi_corners[:, 0])
+        center_y = np.mean(scaled_roi_corners[:, 1])
+
+        # Scale the polygon
+        scaled_down_roi = scaled_roi_corners.copy().astype(np.float32)
+        scaled_down_roi[:, 0] = (scaled_down_roi[:, 0] - center_x) * scale_factor + center_x
+        scaled_down_roi[:, 1] = (scaled_down_roi[:, 1] - center_y) * scale_factor + center_y
+        scaled_down_roi = scaled_down_roi.astype(np.int32)
+
+        # Draw original polygon (green)
+        #cv2.polylines(frame, [scaled_roi_corners], isClosed=True, color=(0, 255, 0), thickness=2)
+
+        # Draw scaled-down polygon (red)
+        #cv2.polylines(frame, [scaled_down_roi], isClosed=True, color=(0, 0, 255), thickness=2)
+
+
         for box, score, label in zip(boxes, scores, labels):
             if score < DETECTION_THRESHOLD:
                 continue
@@ -331,6 +369,13 @@ if __name__ == "__main__":
             #if tr.hits < tracker.min_hits or tr.time_since_update > 1:
             #   continue
             if class_name.lower() in {"car", "truck" ,"motorcycle","bus"}:
+                
+                # Checks whether the box is too close to the edges of the intersection
+                cx = (x1 + x2) / 2
+                cy = (y1 + y2) / 2
+                if cv2.pointPolygonTest(scaled_down_roi, (cx, cy), False) < 0:
+                    continue  # skip tracks outside scaled polygon
+
                 car_tracks.append(tr)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
@@ -470,6 +515,10 @@ if __name__ == "__main__":
         cv2.putText(frame, f"Inference: {inference_time_ms:.1f} ms", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
+        #cv2.putText(frame, f"Frame {num:.1f}", (10, 90),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+
+        #cv2.rectangle(frame, (157, 0), (367, 113), (0, 0, 255), 3)
         cv2.imshow("Predictive Crash Tracker", frame)
         
         if cv2.waitKey(1) & 0xFF == ord('q'):

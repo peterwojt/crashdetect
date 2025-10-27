@@ -321,6 +321,27 @@ def process_chunk(filename):
 
         MAX_BOX_AREA = 10000  # ignore overly large boxes (likely false detections)
         detections = []
+
+
+        # Scale polygon coordinates to the cropped frame
+        scaled_roi_corners = roi_corners.copy()
+        scaled_roi_corners[:, 0] -= x  # shift x
+        scaled_roi_corners[:, 1] -= y  # shift y
+
+        # Scale factor
+        scale_factor = 0.8
+
+        # Center of the polygon (for scaling)
+        center_x = np.mean(scaled_roi_corners[:, 0])
+        center_y = np.mean(scaled_roi_corners[:, 1])
+
+        # Scale the polygon
+        scaled_down_roi = scaled_roi_corners.copy().astype(np.float32)
+        scaled_down_roi[:, 0] = (scaled_down_roi[:, 0] - center_x) * scale_factor + center_x
+        scaled_down_roi[:, 1] = (scaled_down_roi[:, 1] - center_y) * scale_factor + center_y
+        scaled_down_roi = scaled_down_roi.astype(np.int32)
+
+
         for box, score, label in zip(boxes, scores, labels):
             if score < DETECTION_THRESHOLD:
                 continue
@@ -352,6 +373,13 @@ def process_chunk(filename):
             color = (0, 255, 0)
             
             if class_name.lower() in {"car", "truck" ,"motorcycle","bus"}:
+
+                # Checks whether the box is too close to the edges of the intersection
+                cx = (x1 + x2) / 2
+                cy = (y1 + y2) / 2
+                if cv2.pointPolygonTest(scaled_down_roi, (cx, cy), False) < 0:
+                    continue  # skip tracks outside scaled polygon
+
                 car_tracks.append(tr)
                 #cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 #cv2.putText(frame, f"ID {tid} {class_name}", (x1, max(y1 - 10, 0)),
